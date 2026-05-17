@@ -13,8 +13,10 @@ build/
 .env
 .streamlit/secrets.toml
 
-# Dados dos participantes (não comitar — gerenciar separadamente)
-Bolao_Copa2026_TurimMFO_*.xlsx
+# Dados Excel do app
+# Mantém versionados para o Streamlit Cloud conseguir ler
+!apostas/*.xlsx
+!gabarito/*.xlsx
 
 # OS
 .DS_Store

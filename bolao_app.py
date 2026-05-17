@@ -203,9 +203,15 @@ def img_to_b64(path):
 
 # Paths dos assets (ao lado do script ou em subpasta assets/)
 SCRIPT_DIR = Path(__file__).parent
+
+LOGOS_DIR = SCRIPT_DIR / "logos"
+APOSTAS_DIR = SCRIPT_DIR / "apostas"
+GABARITO_DIR = SCRIPT_DIR / "gabarito"
+
 def find_asset(name):
-    for p in [SCRIPT_DIR/name, SCRIPT_DIR/"assets"/name, Path(name)]:
-        if p.exists(): return str(p)
+    for p in [LOGOS_DIR / name, SCRIPT_DIR / name]:
+        if p.exists():
+            return str(p)
     return ""
 
 LOGO_TURIM_BRANCA = find_asset("logo_turim_branca.png")
@@ -579,15 +585,24 @@ def load_part(path):
     except Exception as e:
         st.warning(f"Erro: {e}"); return {},(None,None),{}
 
-def detect(folder):
-    files=sorted(glob.glob(os.path.join(folder,"Bolao_Copa2026_TurimMFO_*.xlsx")))
-    gabs,parts=[],[]
-    for f in files:
-        base=os.path.basename(f)
-        nm=re.sub(r'(?i)^Bolao_Copa2026_TurimMFO_','',base).replace('.xlsx','').replace('_',' ').strip()
-        if any(k in base.lower() for k in ['master','gabarito','admin','resultado']): gabs.append((nm,f))
-        else: parts.append((nm,f))
-    return gabs,parts
+def detect():
+    gab_files = sorted(GABARITO_DIR.glob("Bolao_Copa2026_TurimMFO_*.xlsx"))
+    part_files = sorted(APOSTAS_DIR.glob("Bolao_Copa2026_TurimMFO_*.xlsx"))
+
+    gabs = []
+    parts = []
+
+    for f in gab_files:
+        base = f.name
+        nm = re.sub(r'(?i)^Bolao_Copa2026_TurimMFO_', '', base).replace('.xlsx', '').replace('_', ' ').strip()
+        gabs.append((nm, str(f)))
+
+    for f in part_files:
+        base = f.name
+        nm = re.sub(r'(?i)^Bolao_Copa2026_TurimMFO_', '', base).replace('.xlsx', '').replace('_', ' ').strip()
+        parts.append((nm, str(f)))
+
+    return gabs, parts
 
 # ══════════════════════════════════════════════════════════════════════
 # SIDEBAR  — nativa, sem CSS override
@@ -603,11 +618,10 @@ with st.sidebar:
         if LOGO_TORI: st.image(LOGO_TORI, width=160)
     st.markdown("---")
     st.markdown("### ⚙️ Configuração")
-    folder = st.text_input("📁 Pasta", value=os.getcwd(), label_visibility="collapsed",
-                           placeholder="Caminho da pasta com os arquivos...")
-    st.caption(f"📁 {folder[:40]}..." if len(folder) > 40 else f"📁 {folder}")
+    st.caption(f"📋 Gabarito: `{GABARITO_DIR}`")
+    st.caption(f"👥 Apostas: `{APOSTAS_DIR}`")
 
-    gabs, parts = detect(folder)
+    gabs, parts = detect()
 
     st.markdown("---")
     if not gabs:
