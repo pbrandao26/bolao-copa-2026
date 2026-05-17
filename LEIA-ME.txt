@@ -1,0 +1,47 @@
+==========================================================
+ BOLÃO COPA 2026 - TURIM MFO - Dashboard Streamlit
+==========================================================
+
+COMO RODAR
+----------
+1. Instale as dependências:
+   pip install -r requirements.txt
+
+2. Coloque todos os arquivos na mesma pasta:
+
+   Estrutura da pasta:
+   📁 bolao/
+   ├── bolao_app.py                            ← este arquivo
+   ├── requirements.txt
+   ├── Bolao_Copa2026_TurimMFO_Master.xlsx     ← gabarito com resultados reais
+   ├── Bolao_Copa2026_TurimMFO_Pedro_Brandao.xlsx
+   ├── Bolao_Copa2026_TurimMFO_Joao_Mello.xlsx
+   ├── Bolao_Copa2026_TurimMFO_Victor_Bethlem.xlsx
+   └── Bolao_Copa2026_TurimMFO_Pedro_Herdy.xlsx
+
+3. Execute:
+   streamlit run bolao_app.py
+
+4. Acesse: http://localhost:8501
+
+NOMEAR OS ARQUIVOS
+------------------
+• Master/Gabarito: deve conter "master", "gabarito", "admin" ou "resultado"
+  no nome. Ex: Bolao_Copa2026_TurimMFO_Master.xlsx
+
+• Participantes: qualquer arquivo Bolao_Copa2026_TurimMFO_*.xlsx
+  que não seja o gabarito.
+
+COMO PREENCHER OS RESULTADOS (ADMIN)
+--------------------------------------
+No arquivo Master:
+  • Jogos - Grupos: preencha colunas F e G com gols de cada jogo
+  • Mata-Mata - Jogos: preencha F, G (placar) e H (S1/S2 se pênaltis)
+  • Apostas - Bonus: preencha linha 4 (Admin) com artilheiro e melhor grupo
+
+PONTUAÇÃO
+---------
+Grupos:    5=placar exato | 3=resultado+saldo | 2=resultado | 0=errou
+Bônus:     Artilheiro=10pts | Melhor Grupo=5pts
+Mata-Mata: R32=3 | Oitavas=5 | Quartas=8 | Semis=12 | 3°=10 | Final=25
+==========================================================
