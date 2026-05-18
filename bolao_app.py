@@ -17,9 +17,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-if "APP_PASSWORD" in st.secrets:
+try:
     _PWD = st.secrets["APP_PASSWORD"]
-else:
+except Exception:
     _PWD = os.getenv("APP_PASSWORD")
 
 # ══════════════════════════════════════════════════════════════════════
@@ -269,6 +269,29 @@ FLAGS={
     'Inglaterra':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','Croacia':'🇭🇷','Gana':'🇬🇭','Panama':'🇵🇦',
 }
 def F(t): return FLAGS.get(str(t),'🌍') if t and str(t) not in ('?','') else ''
+
+COUNTRY_ISO = {
+    'Mexico':'mx','Africa do Sul':'za','Coreia do Sul':'kr','Tchequia':'cz',
+    'Canada':'ca','Bosnia e Herzegovina':'ba','Qatar':'qa','Suica':'ch',
+    'Brasil':'br','Marrocos':'ma','Haiti':'ht','Escocia':'gb-sct',
+    'Estados Unidos':'us','Paraguai':'py','Australia':'au','Turquia':'tr',
+    'Alemanha':'de','Curacao':'cw','Costa do Marfim':'ci','Equador':'ec',
+    'Holanda':'nl','Japao':'jp','Suecia':'se','Tunisia':'tn',
+    'Belgica':'be','Egito':'eg','Ira':'ir','Nova Zelandia':'nz',
+    'Espanha':'es','Cabo Verde':'cv','Arabia Saudita':'sa','Uruguai':'uy',
+    'Franca':'fr','Senegal':'sn','Iraque':'iq','Noruega':'no',
+    'Argentina':'ar','Argelia':'dz','Austria':'at','Jordania':'jo',
+    'Portugal':'pt','RD Congo':'cd','Uzbequistao':'uz','Colombia':'co',
+    'Inglaterra':'gb-eng','Croacia':'hr','Gana':'gh','Panama':'pa',
+}
+def FI(t):
+    """Flag img tag for HTML blocks (works on all platforms)."""
+    if not t or str(t) in ('?',''):
+        return ''
+    code = COUNTRY_ISO.get(str(t),'')
+    if not code:
+        return ''
+    return f'<img src="https://flagcdn.com/16x12/{code}.png" style="vertical-align:middle;margin-right:3px;border-radius:1px" loading="lazy">'
 
 GRP_COLORS={
     'A':'#123A56','B':'#0D2B40','C':'#0D8587','D':'#1a6b6d',
@@ -822,6 +845,8 @@ with T1:
         )
         if st.button("👥 Todos", use_container_width=True):
             st.session_state["sel_bettors"] = all_names
+            st.session_state["ms_bettors"] = all_names
+            st.rerun()
 
     with fc2:
         if "sel_bettors" not in st.session_state:
@@ -984,178 +1009,395 @@ with T1:
 # ── TAB 2: GRUPOS ────────────────────────────────────────────────────
 with T2:
     st.markdown('<div class="sh">⚽ Classificação nos Grupos</div>', unsafe_allow_html=True)
-    mode = st.radio("Baseado em:", ["📋 Resultados Reais", "👤 Apostas de Participante"],
+    mode = st.radio("Baseado em:", ["📋 Resultados Reais", "👤 Apostas de Participante", "📊 Visão Consolidada"],
                     horizontal=True, label_visibility="collapsed")
-    if mode.startswith("📋"):
-        data_src = sort_st(calc_st(gr)) if gr else {
-            g:[(t,{'pts':0,'played':0,'w':0,'d':0,'l':0,'gf':0,'ga':0}) for t in ts]
-            for g,ts in GROUPS_DATA.items()}
-        if not gr: st.info("Nenhum resultado preenchido no gabarito ainda.")
-    else:
-        sel_b = st.selectbox("Apostador", [b[0] for b in bettors], key='grp_pick')
-        bd    = next(b for b in bettors if b[0]==sel_b)
-        data_src = sort_st(calc_st(bd[1]))
 
     DOT   = {1:'#22C55E',2:'#86EFAC',3:'#FB923C',4:'#F87171'}
     RCLS  = {1:'row-q1',2:'row-q2',3:'row-q3',4:'row-q4'}
-    for row_g in [GL[i:i+3] for i in range(0,12,3)]:
-        cs = st.columns(3, gap="small")
-        for c,grp in zip(cs,row_g):
-            with c:
-                color = GRP_COLORS.get(grp,'#123A56')
-                rows  = ""
-                for pos,(team,d) in enumerate(data_src.get(grp,[]),1):
-                    gd  = d['gf']-d['ga']; pl = d['played']
-                    pct = int(d['pts']/(pl*3)*100) if pl else 0
-                    gdc = '#22C55E' if gd>0 else '#EF4444' if gd<0 else 'inherit'
-                    gds = ('+' if gd>0 else '')+str(gd)
-                    rows += f"""<tr>
-                      <td><span class="dot" style="background:{DOT.get(pos,'#888')}"></span>{pos}</td>
-                      <td class="nm">{F(team)} {team}</td>
-                      <td><b>{d['pts']}</b></td><td>{pl}</td>
-                      <td>{d['w']}</td><td>{d['d']}</td><td>{d['l']}</td>
-                      <td>{d['gf']}</td><td>{d['ga']}</td>
-                      <td style="color:{gdc}">{gds}</td><td>{pct}%</td>
-                    </tr>"""
-                st.markdown(f"""<div class="gb">
-                  <div class="gb-hdr" style="color:{color}">Grupo {grp}</div>
-                  <table class="gt">
-                    <tr><th>#</th><th style="text-align:left">Seleção</th>
-                        <th>P</th><th>J</th><th>V</th><th>E</th><th>D</th>
-                        <th>GP</th><th>GC</th><th>SG</th><th>%</th></tr>
-                    {rows}
-                  </table>
-                </div>""", unsafe_allow_html=True)
+
+    if mode.startswith("📊"):
+        # ── Consolidated: all bettors' predictions vs real results, game by game ──
+        st.markdown('<div style="font-size:.8rem;opacity:.6;margin-bottom:8px">Apostas dos participantes selecionados por jogo, comparadas com o resultado real.</div>', unsafe_allow_html=True)
+
+        # Participant filter
+        _cons_all_names = [b[0] for b in bettors]
+        _ca1, _ca2 = st.columns([1, 4])
+        with _ca1:
+            st.markdown("<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
+                        unsafe_allow_html=True)
+            if st.button("👥 Todos", use_container_width=True, key="cons_todos"):
+                st.session_state["cons_sel"] = _cons_all_names
+                st.session_state["cons_ms"]  = _cons_all_names
+                st.rerun()
+        with _ca2:
+            if "cons_sel" not in st.session_state:
+                st.session_state["cons_sel"] = _cons_all_names
+            _cons_valid = [n for n in st.session_state["cons_sel"] if n in _cons_all_names]
+            if not _cons_valid:
+                _cons_valid = _cons_all_names
+            _cons_chosen = st.multiselect(
+                "Participantes:",
+                options=_cons_all_names,
+                default=_cons_valid,
+                key="cons_ms",
+                placeholder="Selecione participantes...",
+            )
+            st.session_state["cons_sel"] = _cons_chosen if _cons_chosen else _cons_all_names
+        _cons_bettors = [b for b in bettors if b[0] in st.session_state["cons_sel"]] or bettors
+
+        sel_grp = st.selectbox("Grupo:", GL, key="cons_grp")
+
+        # Build columns for selected bettors
+        _cb_names = [b[0].split()[0] if " " in b[0] else b[0] for b in _cons_bettors]
+        _STICKY_TH_G = ("position:sticky;left:0;z-index:2;background:#0D2B40;"
+                        "text-align:left;white-space:nowrap;min-width:180px")
+        hdr_cells = "".join(
+            f'<th style="white-space:nowrap;text-align:center;min-width:54px">{n}</th>'
+            for n in _cb_names
+        )
+        hdr_html = (f'<th style="{_STICKY_TH_G}">Jogo</th>'
+                    f'<th style="white-space:nowrap;min-width:46px">Data</th>'
+                    f'<th style="white-space:nowrap;min-width:54px">Real</th>'
+                    f'{hdr_cells}')
+        rows_html = ""
+        for m,(gdate,g,t1,t2) in enumerate(GROUP_FIXTURES):
+            if g != sel_grp: continue
+            real = gr.get(m)
+            rs   = f"<b>{real[0]}–{real[1]}</b>" if real else "<span style='opacity:.4'>⏳</span>"
+            ds   = gdate.strftime("%d/%m")
+            cells = ""
+            for nm_,bgb_,_,_,bsc_ in _cons_bettors:
+                bet_ = bgb_.get(m)
+                pts_ = bsc_['gdet'].get(m)
+                if bet_ is None:
+                    cells += '<td style="opacity:.3;text-align:center">—</td>'
+                    continue
+                bs_ = f"{bet_[0]}–{bet_[1]}"
+                color_ = ('#22C55E' if pts_==5 else '#5EEAD4' if pts_==3 else
+                          '#FB923C' if pts_==2 else '#F87171' if pts_==0 else 'inherit')
+                cells += f'<td style="color:{color_};text-align:center">{bs_}</td>'
+            _td_jogo = (f'<td style="position:sticky;left:0;z-index:1;'
+                        f'box-shadow:2px 0 4px rgba(0,0,0,.08);'
+                        f'min-width:180px;font-size:.75rem">'
+                        f'{FI(t1)}{t1} × {FI(t2)}{t2}</td>')
+            rows_html += (f'<tr>{_td_jogo}'
+                          f'<td style="opacity:.55;font-size:.72rem;text-align:center">{ds}</td>'
+                          f'<td style="text-align:center">{rs}</td>{cells}</tr>')
+        st.markdown(
+            f'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px">'
+            f'<table class="mm-tbl" style="width:auto;table-layout:auto">'
+            f'<thead><tr>{hdr_html}</tr></thead><tbody>{rows_html}</tbody>'
+            f'</table></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div style="font-size:.72rem;opacity:.5;margin-top:6px">'
+            '<span style="color:#22C55E">■</span> Placar exato (5pts) &nbsp;'
+            '<span style="color:#5EEAD4">■</span> Saldo exato (3pts) &nbsp;'
+            '<span style="color:#FB923C">■</span> Vencedor certo (2pts) &nbsp;'
+            '<span style="color:#F87171">■</span> Errou (0pts)</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        if mode.startswith("📋"):
+            data_src = sort_st(calc_st(gr)) if gr else {
+                g:[(t,{'pts':0,'played':0,'w':0,'d':0,'l':0,'gf':0,'ga':0}) for t in ts]
+                for g,ts in GROUPS_DATA.items()}
+            if not gr: st.info("Nenhum resultado preenchido no gabarito ainda.")
+        else:
+            sel_b = st.selectbox("Apostador", [b[0] for b in bettors], key='grp_pick')
+            bd    = next(b for b in bettors if b[0]==sel_b)
+            data_src = sort_st(calc_st(bd[1]))
+
+        for row_g in [GL[i:i+3] for i in range(0,12,3)]:
+            cs = st.columns(3, gap="small")
+            for c,grp in zip(cs,row_g):
+                with c:
+                    color = GRP_COLORS.get(grp,'#123A56')
+                    rows  = ""
+                    for pos,(team,d) in enumerate(data_src.get(grp,[]),1):
+                        gd  = d['gf']-d['ga']; pl = d['played']
+                        pct = int(d['pts']/(pl*3)*100) if pl else 0
+                        gdc = '#22C55E' if gd>0 else '#EF4444' if gd<0 else 'inherit'
+                        gds = ('+' if gd>0 else '')+str(gd)
+                        rows += f"""<tr>
+                          <td><span class="dot" style="background:{DOT.get(pos,'#888')}"></span>{pos}</td>
+                          <td class="nm">{FI(team)}{team}</td>
+                          <td><b>{d['pts']}</b></td><td>{pl}</td>
+                          <td>{d['w']}</td><td>{d['d']}</td><td>{d['l']}</td>
+                          <td>{d['gf']}</td><td>{d['ga']}</td>
+                          <td style="color:{gdc}">{gds}</td><td>{pct}%</td>
+                        </tr>"""
+                    st.markdown(f"""<div class="gb">
+                      <div class="gb-hdr" style="color:{color}">Grupo {grp}</div>
+                      <table class="gt">
+                        <tr><th>#</th><th style="text-align:left">Seleção</th>
+                            <th>P</th><th>J</th><th>V</th><th>E</th><th>D</th>
+                            <th>GP</th><th>GC</th><th>SG</th><th>%</th></tr>
+                        {rows}
+                      </table>
+                    </div>""", unsafe_allow_html=True)
 
 # ── TAB 3: MATA-MATA ─────────────────────────────────────────────────
 with T3:
-    st.markdown('<div class="sh">🗓️ Mata-Mata — Seleções por Fase</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sh">🗓️ Mata-Mata</div>', unsafe_allow_html=True)
 
-    # ── Pre-compute ─────────────────────────────────────────────────────
-    # Real winners per round
+    mm_mode = st.radio(
+        "Visualização:",
+        ["📋 Resultados Reais", "🗓️ Seleções por Fase"],
+        horizontal=True, label_visibility="collapsed",
+    )
+
+    # Pre-compute real winners per round (used in both views)
     real_by_rnd: dict = {
         rnd: {rw.get(m) for m in midxs} - {None}
         for rnd, midxs in rnd_ms.items()
     }
 
-    # Each bettor's picks per round  {rnd: set_of_teams}
-    def picks_by_round(gb, xm, t495_):
-        bp, _ = sim_bet(gb, xm, t495_)
-        out: dict = {}
-        for m, (rnd, *_) in enumerate(KO):
-            p = bp.get(m)
-            if p and p != "?":
-                out.setdefault(rnd, set()).add(p)
-        return out
+    if mm_mode.startswith("📋"):
+        # ── Resultados Reais ─────────────────────────────────────────────
+        if not mmr:
+            st.info("Nenhum resultado de Mata-Mata preenchido no gabarito ainda.")
+        else:
+            for rnd, mlist in rnd_ms.items():
+                _ico_r = RND_ICO.get(rnd, "⚪")
+                _pv_r  = KO_PTS[rnd]
+                _has   = any(m in mmr for m in mlist)
+                with st.expander(f"{_ico_r} {rnd} — {_pv_r} pts/seleção", expanded=(_has and rnd == "R32")):
+                    if not _has:
+                        st.markdown('<div style="opacity:.45;font-size:.82rem">⏳ Jogos ainda não realizados.</div>',
+                                    unsafe_allow_html=True)
+                        continue
+                    _html_r = ""
+                    for m in mlist:
+                        t1r, t2r = rn.get(m, ('?','?'))
+                        sc_r     = mmr.get(m)
+                        ko_date  = KO_DATES[m] if m < len(KO_DATES) else None
+                        ds_r     = ko_date.strftime("%d/%m") if ko_date else "—"
+                        if sc_r:
+                            g1v, g2v, pen = sc_r
+                            score_str = f"<b>{g1v}–{g2v}</b>"
+                            if pen:
+                                score_str += f' <span style="font-size:.68rem;opacity:.6">({pen})</span>'
+                            winner = rw.get(m)
+                            t1_sty = "font-weight:700;color:#22C55E" if winner == t1r else ""
+                            t2_sty = "font-weight:700;color:#22C55E" if winner == t2r else ""
+                            _html_r += (
+                                f'<div class="mr">'
+                                f'<div style="min-width:40px;font-size:.68rem;opacity:.5">{ds_r}</div>'
+                                f'<div class="mr-t" style="display:flex;align-items:center;gap:6px">'
+                                f'<span style="{t1_sty}">{FI(t1r)}{t1r}</span>'
+                                f'<span style="opacity:.4;font-size:.75rem">vs</span>'
+                                f'<span style="{t2_sty}">{FI(t2r)}{t2r}</span>'
+                                f'</div>'
+                                f'<span class="mr-s">{score_str}</span>'
+                                f'</div>'
+                            )
+                        else:
+                            _html_r += (
+                                f'<div class="mr" style="opacity:.5">'
+                                f'<div style="min-width:40px;font-size:.68rem;opacity:.5">{ds_r}</div>'
+                                f'<div class="mr-t">{FI(t1r)}{t1r} <span style="opacity:.4">vs</span> {FI(t2r)}{t2r}</div>'
+                                f'<span class="mr-s">⏳</span>'
+                                f'</div>'
+                            )
+                    st.markdown(_html_r, unsafe_allow_html=True)
 
-    btr = [(nm, picks_by_round(gb, xm, t495), sc)
-           for nm, gb, _, xm, sc in bettors]
+    else:
+        # ── Seleções por Fase ────────────────────────────────────────────
+        def picks_by_round(gb, xm, t495_):
+            bp, _ = sim_bet(gb, xm, t495_)
+            out: dict = {}
+            for m, (rnd, *_) in enumerate(KO):
+                p = bp.get(m)
+                if p and p != "?":
+                    out.setdefault(rnd, set()).add(p)
+            return out
 
-    # ── Round-by-round sections ─────────────────────────────────────────
-    for rnd, mlist in rnd_ms.items():
-        pv       = KO_PTS[rnd]
-        real_set = real_by_rnd.get(rnd, set())
-        started  = bool(real_set)
-        ico      = RND_ICO.get(rnd, "⚪")
-        max_pts  = pv * len(mlist)
+        btr_all = [(nm, picks_by_round(gb, xm, t495), sc)
+                   for nm, gb, _, xm, sc in bettors]
 
-        with st.expander(f"{ico} {rnd} — {pv} pts por seleção que avançar", expanded=(rnd=="R32")):
-
-            # ── Row 1: Who really advanced ───────────────────────────
-            if started:
-                real_pills = "".join(
-                    f'<span class="pill pill-real">{F(t)} {t}</span>'
-                    for t in sorted(real_set, key=str)
-                )
-                st.markdown(
-                    f'<div style="margin-bottom:12px">'
-                    f'<div class="rnd-section-lbl">✅ Avançaram ({len(real_set)})</div>'
-                    f'<div>{real_pills}</div></div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<div style="opacity:.5;font-size:.82rem;margin-bottom:12px">⏳ Rodada ainda não iniciou.</div>',
-                    unsafe_allow_html=True,
-                )
-
-            st.divider()
-
-            # ── Row 2: Per-bettor comparison ─────────────────────────
-            # Collect all teams that appear (picks + real)
-            all_teams = set(real_set)
-            for _, prnd, _ in btr:
-                all_teams |= prnd.get(rnd, set())
-            all_teams -= {"?", None}
-
-            # Sort: real winners first (alphabetically), then misses
-            sorted_teams = (
-                sorted(all_teams & real_set, key=str) +
-                sorted(all_teams - real_set,  key=str)
+        _all_btr_names = [nm for nm, _, _ in btr_all]
+        _f1, _f2 = st.columns([1, 5])
+        with _f1:
+            st.markdown("<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
+                        unsafe_allow_html=True)
+            if st.button("👥 Todos", use_container_width=True, key="mm_todos"):
+                st.session_state["mm_sel_bettors"] = _all_btr_names
+                st.session_state["mm_ms_bettors"]  = _all_btr_names
+                st.rerun()
+        with _f2:
+            if "mm_sel_bettors" not in st.session_state:
+                st.session_state["mm_sel_bettors"] = _all_btr_names
+            _valid_mm = [n for n in st.session_state["mm_sel_bettors"] if n in _all_btr_names]
+            if not _valid_mm:
+                _valid_mm = _all_btr_names
+            _chosen_mm = st.multiselect(
+                "Participantes:",
+                options=_all_btr_names,
+                default=_valid_mm,
+                key="mm_ms_bettors",
+                placeholder="Selecione participantes...",
             )
+            st.session_state["mm_sel_bettors"] = _chosen_mm if _chosen_mm else _all_btr_names
 
-            # Header row: apostadores
-            hcols = st.columns([3] + [1]*len(btr))
-            hcols[0].markdown(
-                '<div style="font-size:.72rem;font-weight:700;opacity:.6;padding:2px 0">SELEÇÃO</div>',
-                unsafe_allow_html=True,
-            )
-            for ci, (nm, _, _sc) in enumerate(btr, 1):
-                first = nm.split()[0]
-                hcols[ci].markdown(
-                    f'<div style="text-align:center;font-size:.72rem;font-weight:700;opacity:.6">{first}</div>',
-                    unsafe_allow_html=True,
-                )
+        btr = [b for b in btr_all if b[0] in st.session_state["mm_sel_bettors"]]
+        if not btr:
+            btr = btr_all
 
-            # Data rows: one per team
-            for team in sorted_teams:
-                in_real = team in real_set
-                dcols   = st.columns([3] + [1]*len(btr))
+        _STICKY_TH = ("position:sticky;left:0;z-index:2;background:#0D2B40;"
+                      "min-width:160px;text-align:left")
+        _STICKY_TD_HIT  = ("position:sticky;left:0;z-index:1;background:rgba(13,133,135,.18);"
+                           "min-width:160px;font-weight:700;color:#0D8587")
+        _STICKY_TD_MISS = ("position:sticky;left:0;z-index:1;background:rgba(18,58,86,.08);"
+                           "min-width:160px;opacity:.6")
+        _STICKY_FOOT    = ("position:sticky;left:0;z-index:1;background:#0D2B40;"
+                           "color:white;font-size:.7rem;font-weight:700;min-width:160px")
 
-                # Team cell
-                if in_real:
-                    team_html = f'<span style="font-weight:700;color:#0D8587;font-size:.82rem">{F(team)} {team}</span>'
+        for rnd, mlist in rnd_ms.items():
+            pv       = KO_PTS[rnd]
+            real_set = real_by_rnd.get(rnd, set())
+            started  = bool(real_set)
+            ico      = RND_ICO.get(rnd, "⚪")
+
+            with st.expander(f"{ico} {rnd} — {pv} pts por seleção que avançar", expanded=(rnd=="R32")):
+                if started:
+                    real_pills = "".join(
+                        f'<span class="pill pill-real">{FI(t)}{t}</span>'
+                        for t in sorted(real_set, key=str)
+                    )
+                    st.markdown(
+                        f'<div style="margin-bottom:10px">'
+                        f'<div class="rnd-section-lbl">✅ Avançaram ({len(real_set)})</div>'
+                        f'<div>{real_pills}</div></div>',
+                        unsafe_allow_html=True,
+                    )
                 else:
-                    team_html = f'<span style="font-size:.82rem;opacity:.55">{F(team)} {team}</span>'
-                dcols[0].markdown(team_html, unsafe_allow_html=True)
-
-                # Apostador cells
-                for ci, (nm, prnd, sc) in enumerate(btr, 1):
-                    picked = team in prnd.get(rnd, set())
-                    if picked and in_real and started:
-                        icon_c = "✅"
-                    elif picked and not started:
-                        icon_c = "⏳"
-                    elif picked:          # picked but didn't advance
-                        icon_c = "❌"
-                    elif in_real and started:  # advanced but not picked
-                        icon_c = "🔵"
-                    else:
-                        icon_c = "·"
-                    dcols[ci].markdown(
-                        f'<div style="text-align:center;font-size:.88rem">{icon_c}</div>',
+                    st.markdown(
+                        '<div style="opacity:.5;font-size:.82rem;margin-bottom:10px">⏳ Rodada ainda não iniciou.</div>',
                         unsafe_allow_html=True,
                     )
 
-            st.divider()
+                all_teams = set(real_set)
+                for _, prnd, _ in btr:
+                    all_teams |= prnd.get(rnd, set())
+                all_teams -= {"?", None}
+                sorted_teams = (
+                    sorted(all_teams & real_set, key=str) +
+                    sorted(all_teams - real_set,  key=str)
+                )
 
-            # ── Row 3: Score strip per bettor ─────────────────────────
-            strip_cols = st.columns([3] + [1]*len(btr))
-            strip_cols[0].markdown(
-                '<div style="font-size:.72rem;font-weight:700;opacity:.6">ACERTOS / PTS</div>',
+                _th_cells = "".join(
+                    f'<th style="text-align:center;white-space:nowrap;min-width:52px">'
+                    f'{(nm.split()[0] if " " in nm else nm)}</th>'
+                    for nm, _, _ in btr
+                )
+                _header = f'<tr><th style="{_STICKY_TH}">Seleção</th>{_th_cells}</tr>'
+
+                _body = ""
+                for team in sorted_teams:
+                    in_real = team in real_set
+                    _td_sty = _STICKY_TD_HIT if in_real else _STICKY_TD_MISS
+                    _td_team = f'<td style="{_td_sty};font-size:.8rem">{FI(team)}{team}</td>'
+                    _tds = ""
+                    for _, prnd, _ in btr:
+                        picked = team in prnd.get(rnd, set())
+                        if picked and in_real and started: ic = "✅"
+                        elif picked and not started:        ic = "⏳"
+                        elif picked:                        ic = "❌"
+                        elif in_real and started:           ic = "🔵"
+                        else:                               ic = '<span style="opacity:.25">·</span>'
+                        _tds += f'<td style="text-align:center;font-size:.85rem">{ic}</td>'
+                    _row_bg = "rgba(13,133,135,.06)" if in_real else ""
+                    _body  += f'<tr style="background:{_row_bg}">{_td_team}{_tds}</tr>'
+
+                _ft_cells = ""
+                for _, prnd, sc in btr:
+                    my = prnd.get(rnd, set())
+                    ok = len(my & real_set) if started else "—"
+                    pts_rnd = sum(sc["mdet"].get(m, 0) or 0 for m in mlist)
+                    _ft_cells += (
+                        f'<td style="text-align:center;border-top:2px solid rgba(214,184,100,.3)">'
+                        f'<div style="font-size:.85rem;font-weight:800;color:#D6B864">{pts_rnd}</div>'
+                        f'<div style="font-size:.62rem;opacity:.55">{ok}/{len(my)}</div></td>'
+                    )
+                _foot = (f'<tr><td style="{_STICKY_FOOT};border-top:2px solid rgba(214,184,100,.3)">'
+                         f'PTS / ACERTOS</td>{_ft_cells}</tr>')
+
+                st.markdown(
+                    f'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;'
+                    f'border-radius:8px;margin-top:8px">'
+                    f'<table class="mm-tbl" style="width:auto;table-layout:auto">'
+                    f'<thead>{_header}</thead>'
+                    f'<tbody>{_body}</tbody>'
+                    f'<tfoot>{_foot}</tfoot>'
+                    f'</table></div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── Per-participant bracket view ─────────────────────────────────────
+    st.markdown('<div class="sh">🔍 Chaveamento por Participante</div>', unsafe_allow_html=True)
+    sel_b_mm = st.selectbox("Apostador", [b[0] for b in bettors], key="mm_part_sel")
+    _bd_mm = next(b for b in bettors if b[0] == sel_b_mm)
+    _, _bgb_mm, _, _bxm_mm, _bsc_mm = _bd_mm
+    _picks_mm, _bn_mm = sim_bet(_bgb_mm, _bxm_mm, t495)
+
+    # Group picks by round
+    _part_prnd: dict = {}
+    for _m, (_rnd, *_) in enumerate(KO):
+        _p = _picks_mm.get(_m)
+        if _p and _p != "?":
+            _part_prnd.setdefault(_rnd, []).append((_m, _p))
+
+    # Bracket-style columns: one per phase
+    _phases_order = ['R32','Oitavas','Quartas','Semi','3o Lugar','Final']
+    _phase_cols = st.columns(len(_phases_order), gap="small")
+    for _ci, _ph in enumerate(_phases_order):
+        with _phase_cols[_ci]:
+            _pv = KO_PTS[_ph]
+            _ico = RND_ICO.get(_ph, '⚪')
+            st.markdown(
+                f'<div style="font-size:.7rem;font-weight:800;text-align:center;'
+                f'opacity:.7;margin-bottom:6px">{_ico} {_ph}<br>'
+                f'<span style="font-weight:400;opacity:.6">{_pv}pts/sel</span></div>',
                 unsafe_allow_html=True,
             )
-            for ci, (nm, prnd, sc) in enumerate(btr, 1):
-                my = prnd.get(rnd, set())
-                ok = len(my & real_set) if started else "—"
-                pts_rnd = sum(sc["mdet"].get(m, 0) or 0 for m in mlist)
-                strip_cols[ci].markdown(
-                    f'<div style="text-align:center">'
-                    f'<div style="font-size:.9rem;font-weight:800;color:#D6B864">{pts_rnd}</div>'
-                    f'<div style="font-size:.65rem;opacity:.55">{ok}/{len(my)}</div>'
+            _real_ph = real_by_rnd.get(_ph, set())
+            _part_picks_ph = _part_prnd.get(_ph, [])
+            if not _part_picks_ph:
+                st.markdown('<div style="opacity:.3;font-size:.75rem;text-align:center">—</div>', unsafe_allow_html=True)
+                continue
+            for _m_idx, _team in _part_picks_ph:
+                _t1, _t2 = _bn_mm.get(_m_idx, ('?','?'))
+                _in_real = _team in _real_ph
+                _started = bool(_real_ph)
+                if not _started:
+                    _bg, _fc = "rgba(128,128,128,.1)", "inherit"
+                    _status = "⏳"
+                elif _in_real:
+                    _bg, _fc = "rgba(13,133,135,.18)", "#0D8587"
+                    _status = "✅"
+                else:
+                    _bg, _fc = "rgba(178,88,78,.15)", "#B2584E"
+                    _status = "❌"
+                # show both matchup teams + highlight predicted winner
+                _opp = _t2 if _team == _t1 else _t1
+                st.markdown(
+                    f'<div style="background:{_bg};border-radius:7px;padding:5px 7px;'
+                    f'margin-bottom:4px;font-size:.73rem">'
+                    f'<div style="font-weight:700;color:{_fc}">{_status} {FI(_team)}{_team}</div>'
+                    f'<div style="opacity:.45;font-size:.67rem">vs {FI(_opp)}{_opp}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
+            _pts_ph = sum(_bsc_mm["mdet"].get(_m_idx,0) or 0 for _m_idx,_ in _part_picks_ph)
+            _ok_ph  = sum(1 for _,_t in _part_picks_ph if _t in _real_ph) if _real_ph else 0
+            st.markdown(
+                f'<div style="text-align:center;margin-top:4px;font-size:.72rem;'
+                f'font-weight:700;color:#D6B864">{_pts_ph} pts'
+                f'<span style="font-weight:400;opacity:.55"> ({_ok_ph}/{len(_part_picks_ph)})</span></div>',
+                unsafe_allow_html=True,
+            )
 
     # ── Overall MM ranking chart ──────────────────────────────────────────
     st.markdown('<div class="sh">📊 Ranking Mata-Mata</div>', unsafe_allow_html=True)
@@ -1220,7 +1462,7 @@ with T4:
                     f'<div style="font-weight:800;color:{color};font-size:.87rem;margin-bottom:5px">Grupo {grp}</div>',
                     unsafe_allow_html=True)
                 html = ""
-                for m,(_,g,t1,t2) in enumerate(GROUP_FIXTURES):
+                for m,(gdate,g,t1,t2) in enumerate(GROUP_FIXTURES):
                     if g!=grp: continue
                     pts  = bsc['gdet'].get(m); bet = bgb.get(m); real = gr.get(m)
                     bs   = f"{bet[0]}–{bet[1]}" if bet else "—"
@@ -1230,9 +1472,10 @@ with T4:
                             '<span class="b2">2</span>' if pts==2 else
                             '<span class="b0">0</span>' if pts==0 else
                             '<span class="bN">–</span>')
+                    ds = gdate.strftime("%d/%m")
                     html += f"""<div class="mr">
-                      <div class="mr-t">{F(t1)} {t1}<br>{F(t2)} {t2}</div>
-                      <span class="mr-s">{bs} → {rs}</span>
+                      <div class="mr-t">{FI(t1)}{t1}<br>{FI(t2)}{t2}</div>
+                      <span class="mr-s"><span style="opacity:.5;font-size:.7rem">{ds}</span> {bs} → {rs}</span>
                       {bdg}
                     </div>"""
                 st.markdown(html, unsafe_allow_html=True)
@@ -1272,8 +1515,12 @@ with T4:
             col_p, col_r = st.columns(2, gap="large")
 
             with col_p:
+                _pick_lbl = {
+                    '3o Lugar': '🥉 Apostou que seria a 3ª Colocada',
+                    'Final':    '🏆 Apostou que seria a Campeã',
+                }.get(rnd, f'🎯 Apostou que avançariam')
                 st.markdown(
-                    f'<div class="rnd-section-lbl">🎯 Apostou que avançariam ({len(my_picks)})</div>',
+                    f'<div class="rnd-section-lbl">{_pick_lbl} ({len(my_picks)})</div>',
                     unsafe_allow_html=True,
                 )
                 if my_picks:
@@ -1286,7 +1533,7 @@ with T4:
                             cls, ico_t = "pill-hit",  "✅"
                         else:
                             cls, ico_t = "pill-miss", "❌"
-                        html_p += f'<span class="pill {cls}">{ico_t} {F(team)} {team}</span>'
+                        html_p += f'<span class="pill {cls}">{ico_t} {FI(team)}{team}</span>'
                     st.markdown(f'<div style="line-height:2">{html_p}</div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div style="opacity:.45;font-size:.82rem">Nenhuma seleção escolhida.</div>',
@@ -1302,8 +1549,8 @@ with T4:
                     for team in sorted(real_set, key=str):
                         picked_it = team in my_picks
                         cls_r  = "pill-hit"  if picked_it else "pill-real"
-                        ico_r  = "🎯" if picked_it else ""
-                        html_r += f'<span class="pill {cls_r}">{ico_r} {F(team)} {team}</span>'
+                        ico_r  = "🎯 " if picked_it else ""
+                        html_r += f'<span class="pill {cls_r}">{ico_r}{FI(team)}{team}</span>'
                     st.markdown(f'<div style="line-height:2">{html_r}</div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div style="opacity:.45;font-size:.82rem">Aguardando resultados...</div>',
@@ -1336,7 +1583,7 @@ with ft_cols[1]:
     st.markdown(
         "<div style='text-align:center;color:#5C5F62;font-size:.8rem;padding:.5rem 0'>"
         "Bolão Copa do Mundo 2026 · Turim MFO &nbsp;·&nbsp; "
-        "Desenvolvido com ❤️ &nbsp;·&nbsp; 🐂 Rumo ao Hexa!</div>",
+        "Desenvolvido Em Casa &nbsp;·&nbsp; 🐂 Rumo ao Hexa!</div>",
         unsafe_allow_html=True)
 with ft_cols[2]:
     if LOGO_TURIM_AZUL:
