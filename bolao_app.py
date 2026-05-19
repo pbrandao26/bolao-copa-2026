@@ -218,37 +218,221 @@ LOGO_TURIM_BRANCA = find_asset("logo_turim_branca.png")
 LOGO_TURIM_AZUL   = find_asset("logo_turim_azul.png")
 LOGO_TORI         = find_asset("logo_tori.png")
 MASCOTES          = find_asset("mascotes.png")
-
+FRONT_PAGE        = find_asset("front_page.png")
 # ══════════════════════════════════════════════════════════════════════
 # LOGIN GATE
 # ══════════════════════════════════════════════════════════════════════
 #_PWD = os.getenv("APP_PASSWORD")
 if "auth" not in st.session_state:
     st.session_state.auth = False
-
+ 
 if not st.session_state.auth:
-    st.markdown("""<style>
-      section[data-testid="stSidebar"]{display:none!important;}
-      #MainMenu,footer,header{visibility:hidden;}
-    </style>""", unsafe_allow_html=True)
-    _, mcol, _ = st.columns([1,2,1])
-    with mcol:
-        st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-        if MASCOTES:
-            st.image(MASCOTES, width='stretch')
-        st.markdown(
-            "<div style='text-align:center;margin:10px 0 24px'>"
-            "<div style='font-size:1.75rem;font-weight:900'>⚽ Bolão Copa 2026</div>"
-            "<div style='font-size:.9rem;opacity:.6;margin-top:4px'>Turim MFO · Acesso Restrito</div>"
-            "</div>", unsafe_allow_html=True)
-        pwd = st.text_input("🔑 Senha", type="password",
-                            placeholder="Digite a senha do bolão...")
-        if st.button("Entrar →", type="primary", width='stretch'):
-            if pwd == _PWD:
-                st.session_state.auth = True
-                st.rerun()
-            else:
-                st.error("Senha incorreta. Tente novamente.")
+    # ── Encode front page image as base64 ─────────────────────────────
+    fp_b64 = img_to_b64(FRONT_PAGE) if FRONT_PAGE else ""
+ 
+    st.markdown(f"""
+    <style>
+      /* Hide all Streamlit chrome */
+      section[data-testid="stSidebar"],
+      #MainMenu, footer, header,
+      [data-testid="stHeader"], [data-testid="stToolbar"] {{
+          display: none !important;
+      }}
+ 
+      /* Full-screen background */
+      .stApp,
+      [data-testid="stAppViewContainer"] {{
+          background: #0A1520 !important;
+          min-height: 100vh;
+      }}
+      [data-testid="stMain"] > div,
+      .block-container {{
+          padding: 0 !important;
+          max-width: 100% !important;
+          background: transparent !important;
+      }}
+ 
+      /* ── Login wrapper: image left, form right ── */
+      .login-wrap {{
+          display: flex;
+          min-height: 100vh;
+          position: relative;
+      }}
+ 
+      /* Left: front-page image */
+      .login-img {{
+          flex: 1 1 62%;
+          background: url("data:image/png;base64,{fp_b64}") center center / cover no-repeat;
+          min-height: 100vh;
+      }}
+ 
+      /* Right: glass panel */
+      .login-panel {{
+          flex: 0 0 38%;
+          min-width: 340px;
+          max-width: 480px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 56px 48px;
+          background: rgba(8, 18, 32, 0.88);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border-left: 1px solid rgba(214,184,100,.18);
+          box-shadow: -12px 0 60px rgba(0,0,0,.55);
+          position: relative;
+          z-index: 2;
+      }}
+ 
+      /* Badge */
+      .lp-badge {{
+          display: inline-flex; align-items: center; gap: 6px;
+          background: rgba(214,184,100,.15);
+          border: 1px solid rgba(214,184,100,.4);
+          border-radius: 24px; padding: 5px 14px;
+          font-size: .75rem; font-weight: 700;
+          color: #D6B864; letter-spacing: .5px;
+          text-transform: uppercase; margin-bottom: 28px;
+      }}
+ 
+      /* Title */
+      .lp-title {{
+          font-size: 2rem; font-weight: 900; color: #fff;
+          line-height: 1.15; margin-bottom: 6px;
+          letter-spacing: -.5px;
+      }}
+      .lp-title span {{ color: #D6B864; }}
+      .lp-sub {{
+          font-size: .88rem; color: rgba(255,255,255,.55);
+          margin-bottom: 36px;
+      }}
+ 
+      /* Divider */
+      .lp-divider {{
+          height: 1px;
+          background: linear-gradient(90deg,rgba(214,184,100,.4),transparent);
+          margin-bottom: 28px;
+      }}
+ 
+      /* Label */
+      .lp-label {{
+          font-size: .72rem; font-weight: 700; letter-spacing: 1.2px;
+          text-transform: uppercase; color: rgba(255,255,255,.55);
+          margin-bottom: 8px;
+      }}
+ 
+      /* Input */
+      [data-testid="stTextInput"] input[type="password"] {{
+          background: rgba(255,255,255,.07) !important;
+          border: 1px solid rgba(214,184,100,.3) !important;
+          border-radius: 10px !important;
+          color: #fff !important;
+          font-size: .95rem !important;
+          padding: 14px 16px !important;
+          transition: border-color .2s, box-shadow .2s;
+      }}
+      [data-testid="stTextInput"] input[type="password"]:focus {{
+          border-color: #D6B864 !important;
+          box-shadow: 0 0 0 3px rgba(214,184,100,.18) !important;
+      }}
+      [data-testid="stTextInput"] input::placeholder {{ color: rgba(255,255,255,.3) !important; }}
+      [data-testid="stTextInput"] label {{ display: none !important; }}
+ 
+      /* Button */
+      .stButton > button {{
+          width: 100%;
+          background: linear-gradient(135deg, #C41E3A 0%, #A01030 100%) !important;
+          color: #fff !important;
+          border: none !important;
+          border-radius: 10px !important;
+          font-weight: 800 !important;
+          font-size: 1rem !important;
+          letter-spacing: .5px !important;
+          padding: 14px 0 !important;
+          margin-top: 14px !important;
+          box-shadow: 0 4px 20px rgba(196,30,58,.4) !important;
+          transition: all .2s ease !important;
+      }}
+      .stButton > button:hover {{
+          transform: translateY(-2px) !important;
+          box-shadow: 0 8px 28px rgba(196,30,58,.55) !important;
+      }}
+      .stButton > button:active {{ transform: translateY(0) !important; }}
+ 
+      /* Footer tagline */
+      .lp-footer {{
+          margin-top: 36px;
+          font-size: .72rem; color: rgba(255,255,255,.3);
+          text-align: center; letter-spacing: .5px;
+      }}
+ 
+      /* Error */
+      [data-testid="stAlert"] {{
+          background: rgba(196,30,58,.2) !important;
+          border: 1px solid rgba(196,30,58,.4) !important;
+          border-radius: 8px !important;
+          margin-top: 10px;
+      }}
+ 
+      /* Mobile: stack vertically */
+      @media (max-width: 640px) {{
+          .login-wrap {{ flex-direction: column; }}
+          .login-img {{ min-height: 42vh; flex: none; }}
+          .login-panel {{ flex: none; min-width: unset; max-width: 100%; padding: 36px 28px; }}
+      }}
+    </style>
+ 
+    <div class="login-wrap">
+      <div class="login-img"></div>
+      <!-- right panel is rendered by Streamlit below via a trick -->
+    </div>
+    """, unsafe_allow_html=True)
+ 
+    # ── Overlay the right panel using Streamlit columns ────────────────
+    # We use a fixed-position div approach: render a transparent left
+    # spacer and the real panel on the right.
+    st.markdown("""
+    <style>
+      /* Override block-container to sit on top of the background image */
+      .block-container {
+          position: fixed !important;
+          top: 0; right: 0;
+          width: 38%; min-width: 340px; max-width: 480px;
+          height: 100vh;
+          display: flex; flex-direction: column; justify-content: center;
+          padding: 56px 48px !important;
+          background: rgba(8,18,32,.88) !important;
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border-left: 1px solid rgba(214,184,100,.18);
+          box-shadow: -12px 0 60px rgba(0,0,0,.55);
+          overflow-y: auto;
+      }
+    </style>
+    """, unsafe_allow_html=True)
+ 
+    # Badge + title
+    st.markdown("""
+    <div class="lp-badge">⚽ &nbsp;Turim MFO &nbsp;·&nbsp; Acesso Restrito</div>
+    <div class="lp-title">Bolão<br><span>Copa 2026</span></div>
+    <div class="lp-sub">EUA · México · Canadá &nbsp;·&nbsp; Jun–Jul 2026</div>
+    <div class="lp-divider"></div>
+    <div class="lp-label">🔑 &nbsp;Senha do bolão</div>
+    """, unsafe_allow_html=True)
+ 
+    pwd = st.text_input("Senha", type="password",
+                        placeholder="Digite a senha...",
+                        label_visibility="collapsed")
+    if st.button("Entrar →", use_container_width=True):
+        if pwd == _PWD:
+            st.session_state.auth = True
+            st.rerun()
+        else:
+            st.error("Senha incorreta. Tente novamente.")
+ 
+    st.markdown("""
+    <div class="lp-footer">🐂 TURIM &nbsp;·&nbsp; TORI &nbsp;·&nbsp; RUMO AO HEXA!</div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════
