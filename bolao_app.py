@@ -227,212 +227,178 @@ if "auth" not in st.session_state:
     st.session_state.auth = False
  
 if not st.session_state.auth:
-    # ── Encode front page image as base64 ─────────────────────────────
     fp_b64 = img_to_b64(FRONT_PAGE) if FRONT_PAGE else ""
  
+    # ── Background image + chrome removal ─────────────────────────────
     st.markdown(f"""
     <style>
-      /* Hide all Streamlit chrome */
-      section[data-testid="stSidebar"],
-      #MainMenu, footer, header,
-      [data-testid="stHeader"], [data-testid="stToolbar"] {{
-          display: none !important;
-      }}
+    section[data-testid="stSidebar"],#MainMenu,footer,header,
+    [data-testid="stHeader"],[data-testid="stToolbar"]{{display:none!important;}}
+    html,body{{overflow:hidden!important;height:100%!important;}}
+    .stApp{{overflow:hidden!important;height:100vh!important;}}
+    [data-testid="stMain"]{{overflow:hidden!important;}}
  
-      /* Full-screen background */
-      .stApp,
-      [data-testid="stAppViewContainer"] {{
-          background: #0A1520 !important;
-          min-height: 100vh;
-      }}
-      [data-testid="stMain"] > div,
-      .block-container {{
-          padding: 0 !important;
-          max-width: 100% !important;
-          background: transparent !important;
-      }}
+    /* Full-screen background from front_page.png */
+    .stApp,[data-testid="stAppViewContainer"]{{
+        background: url("data:image/png;base64,{fp_b64}") left center / cover no-repeat !important;
+        min-height:100vh;
+    }}
+    [data-testid="stMain"]>div{{background:transparent!important;}}
  
-      /* ── Login wrapper: image left, form right ── */
-      .login-wrap {{
-          display: flex;
-          min-height: 100vh;
-          position: relative;
-      }}
+    /* Remove all padding, full width */
+    .block-container{{
+        padding:0 44px!important; max-width:100%!important;
+        background:transparent!important;
+        min-height:100vh;
+    }}
  
-      /* Left: front-page image */
-      .login-img {{
-          flex: 1 1 62%;
-          background: url("data:image/png;base64,{fp_b64}") center center / cover no-repeat;
-          min-height: 100vh;
-      }}
+    /* Columns fill full viewport height */
+    [data-testid="stHorizontalBlock"]{{
+        min-height:100vh; gap:0!important;
+        align-items:stretch;
+    }}
+    [data-testid="column"]{{min-height:100vh;}}
  
-      /* Right: glass panel */
-      .login-panel {{
-          flex: 0 0 38%;
-          min-width: 340px;
-          max-width: 480px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          padding: 56px 48px;
-          background: rgba(8, 18, 32, 0.88);
-          backdrop-filter: blur(18px);
-          -webkit-backdrop-filter: blur(18px);
-          border-left: 1px solid rgba(214,184,100,.18);
-          box-shadow: -12px 0 60px rgba(0,0,0,.55);
-          position: relative;
-          z-index: 2;
-      }}
+    /* Left spacer: transparent */
+    [data-testid="column"]:nth-child(1){{
+        background:transparent!important;
+    }}
  
-      /* Badge */
-      .lp-badge {{
-          display: inline-flex; align-items: center; gap: 6px;
-          background: rgba(214,184,100,.15);
-          border: 1px solid rgba(214,184,100,.4);
-          border-radius: 24px; padding: 5px 14px;
-          font-size: .75rem; font-weight: 700;
-          color: #D6B864; letter-spacing: .5px;
-          text-transform: uppercase; margin-bottom: 28px;
-      }}
+    /* Right panel: dark glass */
+    [data-testid="column"]:nth-child(2){{
+        background:rgba(6,14,26,.92)!important;
+        backdrop-filter:blur(22px)!important;
+        -webkit-backdrop-filter:blur(22px)!important;
+        border-left:1px solid rgba(214,184,100,.22)!important;
+        box-shadow:-16px 0 60px rgba(0,0,0,.6)!important;
+        padding:0!important;
+        display:flex!important;
+        flex-direction:column!important;
+        justify-content:flex-start!important;
+        padding:0 44px!important;
+    }}
  
-      /* Title */
-      .lp-title {{
-          font-size: 2rem; font-weight: 900; color: #fff;
-          line-height: 1.15; margin-bottom: 6px;
-          letter-spacing: -.5px;
-      }}
-      .lp-title span {{ color: #D6B864; }}
-      .lp-sub {{
-          font-size: .88rem; color: rgba(255,255,255,.55);
-          margin-bottom: 36px;
-      }}
+    /* Input */
+    [data-testid="column"]:nth-child(2) input[type="password"]{{
+        background:rgba(255,255,255,.07)!important;
+        border:1px solid rgba(214,184,100,.35)!important;
+        border-radius:10px!important; color:#fff!important;
+        font-size:.95rem!important; padding:13px 15px!important;
+        transition:border-color .2s,box-shadow .2s;
+    }}
+    [data-testid="column"]:nth-child(2) input[type="password"]:focus{{
+        border-color:#D6B864!important;
+        box-shadow:0 0 0 3px rgba(214,184,100,.2)!important;
+    }}
+    [data-testid="column"]:nth-child(2) input::placeholder{{
+        color:rgba(255,255,255,.28)!important;
+    }}
+    [data-testid="column"]:nth-child(2) label{{
+        display:inline-flex!important;
+        align-items:center!important;
+        background:rgba(214,184,100,.15)!important;
+        border:1px solid rgba(214,184,100,.4)!important;
+        border-radius:24px!important;
+        padding:5px 14px!important;
+        color:#D6B864!important;
+        font-size:.7rem!important;
+        font-weight:700!important;
+        text-transform:uppercase!important;
+        letter-spacing:.8px!important;
+        margin-bottom:8px!important;
+        width:auto!important;
+    }}
  
-      /* Divider */
-      .lp-divider {{
-          height: 1px;
-          background: linear-gradient(90deg,rgba(214,184,100,.4),transparent);
-          margin-bottom: 28px;
-      }}
+    /* Button */
+    [data-testid="column"]:nth-child(2) .stButton>button{{
+        width:100%;
+        background:#ffffff!important;
+        color:#0D2B40!important; border:none!important;
+        border-radius:10px!important; font-weight:800!important;
+        font-size:1rem!important; letter-spacing:.3px!important;
+        padding:14px 0!important; margin-top:8px!important;
+        box-shadow:0 2px 12px rgba(0,0,0,.25)!important;
+        transition:all .25s ease!important;
+    }}
+    [data-testid="column"]:nth-child(2) .stButton>button:hover{{
+        background:linear-gradient(135deg,#D6B864 0%,#b89640 100%)!important;
+        color:#0D2B40!important;
+        transform:translateY(-2px)!important;
+        box-shadow:0 8px 28px rgba(214,184,100,.55)!important;
+    }}
  
-      /* Label */
-      .lp-label {{
-          font-size: .72rem; font-weight: 700; letter-spacing: 1.2px;
-          text-transform: uppercase; color: rgba(255,255,255,.55);
-          margin-bottom: 8px;
-      }}
- 
-      /* Input */
-      [data-testid="stTextInput"] input[type="password"] {{
-          background: rgba(255,255,255,.07) !important;
-          border: 1px solid rgba(214,184,100,.3) !important;
-          border-radius: 10px !important;
-          color: #fff !important;
-          font-size: .95rem !important;
-          padding: 14px 16px !important;
-          transition: border-color .2s, box-shadow .2s;
-      }}
-      [data-testid="stTextInput"] input[type="password"]:focus {{
-          border-color: #D6B864 !important;
-          box-shadow: 0 0 0 3px rgba(214,184,100,.18) !important;
-      }}
-      [data-testid="stTextInput"] input::placeholder {{ color: rgba(255,255,255,.3) !important; }}
-      [data-testid="stTextInput"] label {{ display: none !important; }}
- 
-      /* Button */
-      .stButton > button {{
-          width: 100%;
-          background: linear-gradient(135deg, #C41E3A 0%, #A01030 100%) !important;
-          color: #fff !important;
-          border: none !important;
-          border-radius: 10px !important;
-          font-weight: 800 !important;
-          font-size: 1rem !important;
-          letter-spacing: .5px !important;
-          padding: 14px 0 !important;
-          margin-top: 14px !important;
-          box-shadow: 0 4px 20px rgba(196,30,58,.4) !important;
-          transition: all .2s ease !important;
-      }}
-      .stButton > button:hover {{
-          transform: translateY(-2px) !important;
-          box-shadow: 0 8px 28px rgba(196,30,58,.55) !important;
-      }}
-      .stButton > button:active {{ transform: translateY(0) !important; }}
- 
-      /* Footer tagline */
-      .lp-footer {{
-          margin-top: 36px;
-          font-size: .72rem; color: rgba(255,255,255,.3);
-          text-align: center; letter-spacing: .5px;
-      }}
- 
-      /* Error */
-      [data-testid="stAlert"] {{
-          background: rgba(196,30,58,.2) !important;
-          border: 1px solid rgba(196,30,58,.4) !important;
-          border-radius: 8px !important;
-          margin-top: 10px;
-      }}
- 
-      /* Mobile: stack vertically */
-      @media (max-width: 640px) {{
-          .login-wrap {{ flex-direction: column; }}
-          .login-img {{ min-height: 42vh; flex: none; }}
-          .login-panel {{ flex: none; min-width: unset; max-width: 100%; padding: 36px 28px; }}
-      }}
-    </style>
- 
-    <div class="login-wrap">
-      <div class="login-img"></div>
-      <!-- right panel is rendered by Streamlit below via a trick -->
-    </div>
-    """, unsafe_allow_html=True)
- 
-    # ── Overlay the right panel using Streamlit columns ────────────────
-    # We use a fixed-position div approach: render a transparent left
-    # spacer and the real panel on the right.
-    st.markdown("""
-    <style>
-      /* Override block-container to sit on top of the background image */
-      .block-container {
-          position: fixed !important;
-          top: 0; right: 0;
-          width: 38%; min-width: 340px; max-width: 480px;
-          height: 100vh;
-          display: flex; flex-direction: column; justify-content: center;
-          padding: 56px 48px !important;
-          background: rgba(8,18,32,.88) !important;
-          backdrop-filter: blur(18px);
-          -webkit-backdrop-filter: blur(18px);
-          border-left: 1px solid rgba(214,184,100,.18);
-          box-shadow: -12px 0 60px rgba(0,0,0,.55);
-          overflow-y: auto;
-      }
+    /* Alert */
+    [data-testid="column"]:nth-child(2) [data-testid="stAlert"]{{
+        background:rgba(196,30,58,.18)!important;
+        border:1px solid rgba(196,30,58,.45)!important;
+        border-radius:8px!important;
+        color:#FCA5A5!important;
+    }}
     </style>
     """, unsafe_allow_html=True)
  
-    # Badge + title
-    st.markdown("""
-    <div class="lp-badge">⚽ &nbsp;Turim MFO &nbsp;·&nbsp; Acesso Restrito</div>
-    <div class="lp-title">Bolão<br><span>Copa 2026</span></div>
-    <div class="lp-sub">EUA · México · Canadá &nbsp;·&nbsp; Jun–Jul 2026</div>
-    <div class="lp-divider"></div>
-    <div class="lp-label">🔑 &nbsp;Senha do bolão</div>
-    """, unsafe_allow_html=True)
+    # ── Two columns: left spacer | right login panel ──────────────────
+    _, rcol = st.columns([58, 42])
+    with rcol:
+        # Spacer — pushes content to lower half of the panel
+        st.markdown("<div style='height:42vh'></div>", unsafe_allow_html=True)
+        # Badge
+        st.markdown("""
+        <div style="margin-top:0;margin-bottom:22px">
+          <span style="display:inline-flex;align-items:center;gap:6px;
+            background:rgba(214,184,100,.14);border:1px solid rgba(214,184,100,.4);
+            border-radius:24px;padding:5px 14px;font-size:.7rem;font-weight:700;
+            color:#D6B864;letter-spacing:.8px;text-transform:uppercase">
+            ⚽ &nbsp;TURIM MFO &nbsp;·&nbsp; ACESSO RESTRITO
+          </span>
+        </div>
+        <div style="font-size:2.1rem;font-weight:900;color:#fff;
+                    line-height:1.15;margin-bottom:8px;letter-spacing:-.5px">
+          Bolão<br><span style="color:#D6B864">Copa 2026</span>
+        </div>
+        <div style="font-size:.82rem;color:rgba(255,255,255,.45);margin-bottom:28px">
+          EUA &nbsp;·&nbsp; México &nbsp;·&nbsp; Canadá &nbsp;·&nbsp; Jun–Jul 2026
+        </div>
+        <div style="height:1px;background:linear-gradient(90deg,rgba(214,184,100,.45),transparent);
+                    margin-bottom:26px"></div>
+        """, unsafe_allow_html=True)
  
-    pwd = st.text_input("Senha", type="password",
-                        placeholder="Digite a senha...",
-                        label_visibility="collapsed")
-    if st.button("Entrar →", use_container_width=True):
-        if pwd == _PWD:
-            st.session_state.auth = True
-            st.rerun()
-        else:
-            st.error("Senha incorreta. Tente novamente.")
+        # Badge label rendered manually (native label hidden)
+        st.markdown("""
+        <div style="display:inline-flex;align-items:center;gap:6px;
+                    background:rgba(214,184,100,.15);border:1px solid rgba(214,184,100,.4);
+                    border-radius:24px;padding:5px 14px;
+                    color:#D6B864;font-size:.7rem;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
+          🔑 &nbsp;SENHA DO BOLÃO
+        </div>
+        """, unsafe_allow_html=True)
+        pwd = st.text_input(
+            "Senha", type="password",
+            placeholder="Digite a senha...",
+            label_visibility="collapsed",
+        )
+        st.markdown("""<style>
+        div[data-testid="column"]:nth-child(2) div.stButton button:hover {
+            background: linear-gradient(135deg,#D6B864 0%,#b89640 100%) !important;
+            color: #0D2B40 !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 28px rgba(214,184,100,.55) !important;
+        }
+        </style>""", unsafe_allow_html=True)
+        if st.button("Entrar →", use_container_width=True):
+            if pwd == _PWD:
+                st.session_state.auth = True
+                st.rerun()
+            else:
+                st.error("Senha incorreta. Tente novamente.")
  
-    st.markdown("""
-    <div class="lp-footer">🐂 TURIM &nbsp;·&nbsp; TORI &nbsp;·&nbsp; RUMO AO HEXA!</div>
-    """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align:center;margin-top:30px;margin-bottom:12px;
+                    font-size:.68rem;color:rgba(255,255,255,.22);letter-spacing:.6px">
+          🐂 TURIM &nbsp;·&nbsp; TORI &nbsp;·&nbsp; RUMO AO HEXA!
+        </div>
+        """, unsafe_allow_html=True)
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════
