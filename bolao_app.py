@@ -1406,6 +1406,23 @@ with T3:
         if not btr:
             btr = btr_all
 
+        # ── Legenda ───────────────────────────────────────────────────
+        st.markdown("""
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;
+                    padding:7px 14px;border-radius:8px;
+                    background:rgba(128,128,128,.06);
+                    border:1px solid rgba(128,128,128,.1);
+                    font-size:.75rem;margin-bottom:4px">
+          <span style="opacity:.55;font-size:.68rem;font-weight:700;
+                       text-transform:uppercase;letter-spacing:.8px">Legenda:</span>
+          <span>✅ Apostou &amp; avançou</span>
+          <span>❌ Apostou mas não avançou</span>
+          <span>🔵 Avançou mas não apostou</span>
+          <span>⏳ Aguardando resultado</span>
+          <span style="opacity:.45">· Não apostou</span>
+        </div>
+        """, unsafe_allow_html=True)
+
         _STICKY_TH = ("position:sticky;left:0;z-index:2;background:#0D2B40;"
                       "min-width:160px;text-align:left")
         _STICKY_TD_HIT  = ("position:sticky;left:0;z-index:1;background:rgba(13,133,135,.18);"
@@ -1464,11 +1481,11 @@ with T3:
                     _tds = ""
                     for _, prnd, _ in btr:
                         picked = team in prnd.get(rnd, set())
-                        if picked and in_real and started: ic = "✅"
-                        elif picked and not started:        ic = "⏳"
-                        elif picked:                        ic = "❌"
-                        elif in_real and started:           ic = "🔵"
-                        else:                               ic = '<span style="opacity:.25">·</span>'
+                        if picked and in_real and started: ic = "✅" # apostou E avançou
+                        elif picked and not started:        ic = "⏳" # apostou, mas rodada ainda não começou
+                        elif picked:                        ic = "❌" # apostou mas NÃO avançou
+                        elif in_real and started:           ic = "🔵" # avançou mas o apostador NÃO apostou
+                        else:                               ic = '<span style="opacity:.25">·</span>' # nem apostou nem avançou
                         _tds += f'<td style="text-align:center;font-size:.85rem">{ic}</td>'
                     _row_bg = "rgba(13,133,135,.06)" if in_real else ""
                     _body  += f'<tr style="background:{_row_bg}">{_td_team}{_tds}</tr>'
