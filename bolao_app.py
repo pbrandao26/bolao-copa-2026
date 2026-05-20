@@ -373,11 +373,6 @@ if not st.session_state.auth:
           🔑 &nbsp;SENHA DO BOLÃO
         </div>
         """, unsafe_allow_html=True)
-        pwd = st.text_input(
-            "Senha", type="password",
-            placeholder="Digite a senha...",
-            label_visibility="collapsed",
-        )
         st.markdown("""<style>
         div[data-testid="column"]:nth-child(2) div.stButton button:hover {
             background: linear-gradient(135deg,#D6B864 0%,#b89640 100%) !important;
@@ -385,13 +380,26 @@ if not st.session_state.auth:
             transform: translateY(-2px) !important;
             box-shadow: 0 8px 28px rgba(214,184,100,.55) !important;
         }
+        /* Hide form border/background */
+        [data-testid="stForm"] {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+        }
         </style>""", unsafe_allow_html=True)
-        if st.button("Entrar →", use_container_width=True):
-            if pwd == _PWD:
-                st.session_state.auth = True
-                st.rerun()
-            else:
-                st.error("Senha incorreta. Tente novamente.")
+        with st.form("login_form", border=False):
+            pwd = st.text_input(
+                "Senha", type="password",
+                placeholder="Digite a senha...",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button("Entrar →", use_container_width=True)
+            if submitted:
+                if pwd == _PWD:
+                    st.session_state.auth = True
+                    st.rerun()
+                else:
+                    st.error("Senha incorreta. Tente novamente.")
  
         st.markdown("""
         <div style="text-align:center;margin-top:30px;margin-bottom:12px;
@@ -1054,7 +1062,10 @@ with T1:
 
         for idx, (nm, gb, _, xm, sc) in enumerate(active_bettors):
             # Points per date
-            pts_by_date: dict = {COPA_START: sc["bonus"]}  # Bônus on kick-off
+            pts_by_date: dict = {
+                date(2026, 7, 19): sc["art_pts"],   # Final — J104
+                date(2026, 6, 27): sc["mg_pts"],    # Último dia dos grupos
+            }
             for m, (d_, g, t1, t2) in enumerate(GROUP_FIXTURES):
                 p = sc["gdet"].get(m)
                 if p is not None and p > 0:
@@ -1416,9 +1427,10 @@ with T3:
                         f'<span class="pill pill-real">{FI(t)}{t}</span>'
                         for t in sorted(real_set, key=str)
                     )
+                    _real_lbl = {'3o Lugar': '🥉 3ª Colocada', 'Final': '🏆 Campeã'}.get(rnd, '✅ Avançaram')
                     st.markdown(
                         f'<div style="margin-bottom:10px">'
-                        f'<div class="rnd-section-lbl">✅ Avançaram ({len(real_set)})</div>'
+                        f'<div class="rnd-section-lbl">{_real_lbl} ({len(real_set)})</div>'
                         f'<div>{real_pills}</div></div>',
                         unsafe_allow_html=True,
                     )
