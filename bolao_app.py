@@ -648,6 +648,15 @@ def sim_bet(gb,xm,t495):
         elif x=='t2': picks[mi]=t2
     return picks,bn
 
+def picks_by_round(gb, xm, t495_):
+    bp, _ = sim_bet(gb, xm, t495_)
+    out: dict = {}
+    for m, (rnd, *_) in enumerate(KO):
+        p = bp.get(m)
+        if p and p != "?":
+            out.setdefault(rnd, set()).add(p)
+    return out
+
 def score_all(gb,xm,bb,gr,mmr,br,t495):
     gdet={}; gt=0
     for m,(r1,r2) in gr.items():
@@ -765,7 +774,8 @@ def load_part(path):
         return gb,bb,xm
     except Exception as e:
         st.warning(f"Erro: {e}"); return {},(None,None),{}
-
+    
+@st.cache_data(show_spinner=False)
 def detect():
     gab_files = sorted(GABARITO_DIR.glob("Bolao_Copa2026_TurimMFO_*.xlsx"))
     part_files = sorted(APOSTAS_DIR.glob("Bolao_Copa2026_TurimMFO_*.xlsx"))
@@ -784,6 +794,19 @@ def detect():
         parts.append((nm, str(f)))
 
     return gabs, parts
+
+@st.cache_data(show_spinner=False)
+def load_all_data(gab_path, parts_tuple):
+    t495      = load_t495(gab_path)
+    gr,mmr,br = load_gab(gab_path)
+    bettors   = []
+    for nm,fp in parts_tuple:
+        gb,bb,xm = load_part(fp)
+        sc   = score_all(gb,xm,bb,gr,mmr,br,t495)
+        prnd = picks_by_round(gb, xm, t495)
+        bettors.append((nm,gb,bb,xm,sc,prnd))
+    bettors.sort(key=lambda x: -x[4]['total'])
+    return t495, gr, mmr, br, bettors
 
 # ══════════════════════════════════════════════════════════════════════
 # SIDEBAR  — nativa, sem CSS override
@@ -856,15 +879,7 @@ if not gab_path or not parts:
 
 # ── Carregar dados
 with st.spinner("Carregando dados..."):
-    t495  = load_t495(gab_path)
-    gr,mmr,br = load_gab(gab_path)
-    bettors = []
-    for nm,fp in parts:
-        gb,bb,xm = load_part(fp)
-        sc = score_all(gb,xm,bb,gr,mmr,br,t495)
-        bettors.append((nm,gb,bb,xm,sc))
-
-bettors.sort(key=lambda x: -x[4]['total'])
+    t495, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts))
 maxp = max((b[4]['total'] for b in bettors), default=1) or 1
 
 rw,rn = {},{}
@@ -900,7 +915,7 @@ with T1:
     cA,cB = st.columns([3,2], gap="large")
     with cA:
         st.markdown('<div class="sh">🏆 Classificação Geral</div>', unsafe_allow_html=True)
-        for pos,(nm,_,_,_,sc) in enumerate(bettors,1):
+        for pos,(nm,_,_,_,sc,_) in enumerate(bettors,1):
             cls  = {1:'rc1',2:'rc2',3:'rc3'}.get(pos,'rcN')
             medal = MEDALS.get(pos, f"{pos}°")
             pct   = int(sc['total']/maxp*100)
@@ -938,7 +953,7 @@ with T1:
         st.plotly_chart(fig, width='stretch', config={'displayModeBar':False})
 
         if bettors:
-            nm0,_,_,_,sc0 = bettors[0]
+            nm0,_,_,_,sc0,_ = bettors[0]
             st.markdown(f"""<div class="mc" style="text-align:left;padding:14px 18px">
               <div style="font-size:.65rem;color:#5C5F62;text-transform:uppercase;letter-spacing:1px">Líder atual</div>
               <div style="font-size:1.35rem;font-weight:800;margin:3px 0">🥇 {nm0}</div>
@@ -1060,7 +1075,7 @@ with T1:
                 bgcolor="rgba(0,0,0,0)", borderpad=3,
             )
 
-        for idx, (nm, gb, _, xm, sc) in enumerate(active_bettors):
+        for idx, (nm, gb, _, xm, sc, _) in enumerate(active_bettors):
             # Points per date
             pts_by_date: dict = {
                 date(2026, 7, 19): sc["art_pts"],   # Final — J104
@@ -1141,7 +1156,7 @@ with T1:
             label_visibility="collapsed",
         )
         phase_data = sorted(
-            [(nm, phase_pts(sc, sel_phase)) for nm,_,_,_,sc in active_bettors],
+            [(nm, phase_pts(sc, sel_phase)) for nm,_,_,_,sc,_ in active_bettors],
             key=lambda x: -x[1],
         )
         bar_names  = [p[0].split()[0] if " " in p[0] else p[0] for p in phase_data]
@@ -1227,7 +1242,7 @@ with T2:
             rs   = f"<b>{real[0]}–{real[1]}</b>" if real else "<span style='opacity:.4'>⏳</span>"
             ds   = gdate.strftime("%d/%m")
             cells = ""
-            for nm_,bgb_,_,_,bsc_ in _cons_bettors:
+            for nm_,bgb_,_,_,bsc_,_ in _cons_bettors:
                 bet_ = bgb_.get(m)
                 pts_ = bsc_['gdet'].get(m)
                 if bet_ is None:
@@ -1366,17 +1381,7 @@ with T3:
 
     else:
         # ── Seleções por Fase ────────────────────────────────────────────
-        def picks_by_round(gb, xm, t495_):
-            bp, _ = sim_bet(gb, xm, t495_)
-            out: dict = {}
-            for m, (rnd, *_) in enumerate(KO):
-                p = bp.get(m)
-                if p and p != "?":
-                    out.setdefault(rnd, set()).add(p)
-            return out
-
-        btr_all = [(nm, picks_by_round(gb, xm, t495), sc)
-                   for nm, gb, _, xm, sc in bettors]
+        btr_all = [(nm, prnd, sc) for nm, gb, bb, xm, sc, prnd in bettors]
 
         _all_btr_names = [nm for nm, _, _ in btr_all]
         _f1, _f2 = st.columns([1, 5])
@@ -1518,7 +1523,7 @@ with T3:
     st.markdown('<div class="sh">🔍 Chaveamento por Participante</div>', unsafe_allow_html=True)
     sel_b_mm = st.selectbox("Apostador", [b[0] for b in bettors], key="mm_part_sel")
     _bd_mm = next(b for b in bettors if b[0] == sel_b_mm)
-    _, _bgb_mm, _, _bxm_mm, _bsc_mm = _bd_mm
+    _, _bgb_mm, _, _bxm_mm, _bsc_mm,_ = _bd_mm
     _picks_mm, _bn_mm = sim_bet(_bgb_mm, _bxm_mm, t495)
 
     # Group picks by round
@@ -1595,7 +1600,7 @@ with T3:
 # ── TAB 4: POR APOSTADOR ─────────────────────────────────────────────
 with T4:
     sel = st.selectbox("👤 Apostador", [b[0] for b in bettors])
-    bnm,bgb,bbb,bxm,bsc = next(b for b in bettors if b[0]==sel)
+    bnm,bgb,bbb,bxm,bsc,_ = next(b for b in bettors if b[0]==sel)
     pos   = next(i for i,(nm,*_) in enumerate(bettors,1) if nm==bnm)
     medal = MEDALS.get(pos, f"{pos}°")
 
