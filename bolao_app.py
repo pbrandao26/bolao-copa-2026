@@ -9,7 +9,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from openpyxl import load_workbook
-import os, glob, re, base64
+import os, glob, re, base64, hashlib, pickle
+from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from datetime import date
 from pathlib import Path
@@ -207,6 +208,7 @@ SCRIPT_DIR = Path(__file__).parent
 LOGOS_DIR = SCRIPT_DIR / "logos"
 APOSTAS_DIR = SCRIPT_DIR / "apostas"
 GABARITO_DIR = SCRIPT_DIR / "gabarito"
+CONSOLIDADA_PATH = APOSTAS_DIR / "Bolao_Copa2026_TurimMFO - Consolidada.xlsx"
 
 def find_asset(name):
     for p in [LOGOS_DIR / name, SCRIPT_DIR / name]:
@@ -219,6 +221,34 @@ LOGO_TURIM_AZUL   = find_asset("logo_turim_azul.png")
 LOGO_TORI         = find_asset("logo_tori.png")
 MASCOTES          = find_asset("mascotes.png")
 FRONT_PAGE        = find_asset("front_page.png")
+
+# ── Cache persistente em disco (sobrevive a reinicializações do processo)
+_CACHE_PATH = SCRIPT_DIR / ".bolao_cache.pkl"
+
+def _compute_fingerprint(paths):
+    parts = []
+    for p in sorted(str(x) for x in paths):
+        try:
+            s = Path(p).stat()
+            parts.append(f"{p}|{s.st_mtime_ns}|{s.st_size}")
+        except Exception:
+            parts.append(f"{p}|missing")
+    return hashlib.md5("\n".join(parts).encode()).hexdigest()
+
+@st.cache_resource(show_spinner=False)
+def _disk_cache_get(fingerprint):
+    """Lê do cache em disco se o fingerprint bater; retorna None caso contrário."""
+    if not _CACHE_PATH.exists():
+        return None
+    try:
+        with open(_CACHE_PATH, "rb") as _f:
+            _c = pickle.load(_f)
+        if _c.get("fp") == fingerprint:
+            return _c["data"]
+    except Exception:
+        pass
+    return None
+
 # ══════════════════════════════════════════════════════════════════════
 # LOGIN GATE
 # ══════════════════════════════════════════════════════════════════════
@@ -393,7 +423,7 @@ if not st.session_state.auth:
                 placeholder="Digite a senha...",
                 label_visibility="collapsed",
             )
-            submitted = st.form_submit_button("Entrar →", use_container_width=True)
+            submitted = st.form_submit_button("Entrar →", width='stretch')
             if submitted:
                 if pwd == _PWD:
                     st.session_state.auth = True
@@ -772,8 +802,8 @@ def load_part(path):
                 if v1 and str(v1).strip().upper()=='X': xm[m]='t1'
                 elif v2 and str(v2).strip().upper()=='X': xm[m]='t2'
         return gb,bb,xm
-    except Exception as e:
-        st.warning(f"Erro: {e}"); return {},(None,None),{}
+    except Exception:
+        return {},(None,None),{}
     
 @st.cache_data(show_spinner=False)
 def detect():
@@ -796,15 +826,89 @@ def detect():
     return gabs, parts
 
 @st.cache_data(show_spinner=False)
+def load_consolidada(path):
+    """Lê o arquivo consolidado e retorna {nm: {gb, bb, xm}}."""
+    try:
+        wb = load_workbook(path, data_only=True, read_only=True)
+        sh = wb.sheetnames
+    except Exception as e:
+        st.error(f"Erro ao ler arquivo consolidado: {e}")
+        return {}
+
+    result = {}
+
+    if "Apostas - Grupos" in sh:
+        ws = wb["Apostas - Grupos"]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]: continue
+            nm = str(row[0])
+            gb = {}
+            for m in range(72):
+                ci = 1 + m * 2
+                v1 = row[ci] if ci < len(row) else None
+                v2 = row[ci + 1] if ci + 1 < len(row) else None
+                if v1 is not None and v2 is not None:
+                    try: gb[m] = (int(v1), int(v2))
+                    except: pass
+            result.setdefault(nm, {"gb": {}, "bb": (None, None), "xm": {}})["gb"] = gb
+
+    if "Apostas - Bonus" in sh:
+        ws = wb["Apostas - Bonus"]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]: continue
+            nm = str(row[0])
+            result.setdefault(nm, {"gb": {}, "bb": (None, None), "xm": {}})["bb"] = (
+                row[1] if len(row) > 1 else None,
+                row[2] if len(row) > 2 else None,
+            )
+
+    if "Apostas - Mata-Mata" in sh:
+        ws = wb["Apostas - Mata-Mata"]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]: continue
+            nm = str(row[0])
+            xm = {}
+            for m in range(32):
+                ci = 1 + m * 2
+                v1 = row[ci] if ci < len(row) else None
+                v2 = row[ci + 1] if ci + 1 < len(row) else None
+                if v1 and str(v1).strip().upper() == "X": xm[m] = "t1"
+                elif v2 and str(v2).strip().upper() == "X": xm[m] = "t2"
+            result.setdefault(nm, {"gb": {}, "bb": (None, None), "xm": {}})["xm"] = xm
+
+    return result
+
+@st.cache_data(show_spinner=False)
+def load_all_data_consolidated(gab_path, consol_path):
+    """Versão rápida: lê uma única planilha consolidada."""
+    t495      = load_t495(gab_path)
+    gr,mmr,br = load_gab(gab_path)
+    consol    = load_consolidada(consol_path)
+    bettors   = []
+    for nm, d in consol.items():
+        gb, bb, xm = d["gb"], d["bb"], d["xm"]
+        sc   = score_all(gb, xm, bb, gr, mmr, br, t495)
+        prnd = picks_by_round(gb, xm, t495)
+        bettors.append((nm, gb, bb, xm, sc, prnd))
+    bettors.sort(key=lambda x: -x[4]["total"])
+    return t495, gr, mmr, br, bettors
+
+@st.cache_data(show_spinner=False)
 def load_all_data(gab_path, parts_tuple):
     t495      = load_t495(gab_path)
     gr,mmr,br = load_gab(gab_path)
-    bettors   = []
-    for nm,fp in parts_tuple:
-        gb,bb,xm = load_part(fp)
-        sc   = score_all(gb,xm,bb,gr,mmr,br,t495)
+
+    def _load_one(item):
+        nm, fp = item
+        gb, bb, xm = load_part(fp)
+        sc   = score_all(gb, xm, bb, gr, mmr, br, t495)
         prnd = picks_by_round(gb, xm, t495)
-        bettors.append((nm,gb,bb,xm,sc,prnd))
+        return (nm, gb, bb, xm, sc, prnd)
+
+    n_workers = min(16, len(parts_tuple) or 1)
+    with ThreadPoolExecutor(max_workers=n_workers) as ex:
+        bettors = list(ex.map(_load_one, parts_tuple))
+
     bettors.sort(key=lambda x: -x[4]['total'])
     return t495, gr, mmr, br, bettors
 
@@ -837,16 +941,22 @@ with st.sidebar:
         st.success(f"✅ {gsel}")
 
     st.markdown("---")
-    if parts:
+    if CONSOLIDADA_PATH.exists():
+        st.success("📦 Modo consolidado ativo")
+        st.caption(f"`{CONSOLIDADA_PATH.name}`")
+        st.caption("Execute `consolidar_apostas.py` para atualizar.")
+    elif parts:
         st.markdown(f"**👥 {len(parts)} participante(s):**")
         for nm,_ in parts:
             st.markdown(f"  · {nm}")
     else:
-        st.warning("⚠️ Sem participantes.")
+        st.warning("⚠️ Sem participantes.\nGere a planilha consolidada ou coloque apostas em `apostas/`.")
 
     st.markdown("---")
     if st.button("🔄 Recarregar dados", width='stretch'):
         st.cache_data.clear()
+        st.cache_resource.clear()
+        _CACHE_PATH.unlink(missing_ok=True)
         st.rerun()
 
     # Mascotes no rodapé da sidebar
@@ -873,13 +983,32 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-if not gab_path or not parts:
-    st.info("👈 Configure a pasta na barra lateral com o arquivo Master e os arquivos dos participantes.")
+if not gab_path or (not CONSOLIDADA_PATH.exists() and not parts):
+    st.info("👈 Configure a pasta na barra lateral. Execute `consolidar_apostas.py` para gerar a planilha consolidada.")
     st.stop()
 
-# ── Carregar dados
-with st.spinner("Carregando dados..."):
-    t495, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts))
+# ── Carregar dados — usa arquivo consolidado (1 arquivo) se disponível
+if CONSOLIDADA_PATH.exists():
+    _all_paths = [gab_path, str(CONSOLIDADA_PATH)]
+else:
+    _all_paths = [gab_path] + [fp for _, fp in parts]
+
+_fp = _compute_fingerprint(_all_paths)
+_disk_data = _disk_cache_get(_fp)
+if _disk_data is not None:
+    t495, gr, mmr, br, bettors = _disk_data
+else:
+    with st.spinner("Carregando dados..."):
+        if CONSOLIDADA_PATH.exists():
+            t495, gr, mmr, br, bettors = load_all_data_consolidated(gab_path, str(CONSOLIDADA_PATH))
+        else:
+            t495, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts))
+    try:
+        with open(_CACHE_PATH, "wb") as _cf:
+            pickle.dump({"fp": _fp, "data": (t495, gr, mmr, br, bettors)}, _cf,
+                        protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        pass
 maxp = max((b[4]['total'] for b in bettors), default=1) or 1
 
 rw,rn = {},{}
@@ -912,17 +1041,60 @@ T1,T2,T3,T4 = st.tabs(["🏆 Ranking","⚽ Grupos","🗓️ Mata-Mata","👤 Por
 
 # ── TAB 1: RANKING ───────────────────────────────────────────────────
 with T1:
+    n_parts    = len(bettors)
+    prize_pool = n_parts * 50
+    prize_pct  = {1: .70, 2: .20, 3: .10}
+
+    # ── Filtro de participantes
+    _all_rk_names = [b[0] for b in bettors]
+    _rc1, _rc2 = st.columns([1, 5])
+    with _rc1:
+        if st.button("✖ Limpar", width='stretch', key="rk_clear_ms"):
+            st.session_state["rk_ms_sel"] = []
+            st.rerun()
+    with _rc2:
+        if "rk_ms_sel" not in st.session_state:
+            st.session_state["rk_ms_sel"] = []
+        _rk_valid = [n for n in st.session_state["rk_ms_sel"] if n in _all_rk_names]
+        _rk_chosen = st.multiselect(
+            "Filtrar:",
+            options=_all_rk_names,
+            default=_rk_valid,
+            key="rk_ms",
+            placeholder="Selecione participantes para filtrar...",
+            label_visibility="collapsed",
+        )
+        st.session_state["rk_ms_sel"] = _rk_chosen
+
+    if "show_all_ranking" not in st.session_state:
+        st.session_state["show_all_ranking"] = False
+    _show_all = st.session_state["show_all_ranking"]
+
+    if _rk_chosen:
+        _display = [b for b in bettors if b[0] in set(_rk_chosen)]
+        _use_expand = False
+    else:
+        _display  = bettors if _show_all else bettors[:10]
+        _use_expand = True
     cA,cB = st.columns([3,2], gap="large")
     with cA:
         st.markdown('<div class="sh">🏆 Classificação Geral</div>', unsafe_allow_html=True)
-        for pos,(nm,_,_,_,sc,_) in enumerate(bettors,1):
-            cls  = {1:'rc1',2:'rc2',3:'rc3'}.get(pos,'rcN')
-            medal = MEDALS.get(pos, f"{pos}°")
+        for pos,(nm,_,_,_,sc,_) in enumerate(_display,1):
+            real_pos = next(i for i,(b,*_) in enumerate(bettors,1) if b==nm)
+            cls   = {1:'rc1',2:'rc2',3:'rc3'}.get(real_pos,'rcN')
+            medal = MEDALS.get(real_pos, f"{real_pos}°")
             pct   = int(sc['total']/maxp*100)
+            prize_badge = ""
+            if real_pos in prize_pct:
+                val = prize_pool * prize_pct[real_pos]
+                prize_badge = (f'<span style="background:rgba(214,184,100,.18);'
+                    f'border:1px solid rgba(214,184,100,.4);border-radius:12px;'
+                    f'padding:1px 8px;font-size:.65rem;font-weight:700;'
+                    f'color:#D6B864;margin-left:6px">R$ {val:,.0f}</span>')
             st.markdown(f"""<div class="rc {cls}">
               <div style="font-size:1.35rem;width:32px;text-align:center;flex-shrink:0">{medal}</div>
               <div style="flex:1;min-width:0">
-                <div class="rc-name">{nm}</div>
+                <div class="rc-name">{nm}{prize_badge}</div>
                 <div class="rc-sub">Grupos {sc['grupos']} · Bônus {sc['bonus']} · MM {sc['mm']}</div>
                 <div class="bar-bg"><div class="bar-fg" style="width:{pct}%"></div></div>
               </div>
@@ -932,24 +1104,36 @@ with T1:
               </div>
             </div>""", unsafe_allow_html=True)
 
+        if _use_expand:
+            if not _show_all and len(bettors) > 10:
+                if st.button(f"👇 Ver todos os {len(bettors)} participantes",
+                                 width='stretch'):
+                    st.session_state["show_all_ranking"] = True
+                    st.rerun()
+            elif _show_all and len(bettors) > 10:
+                if st.button("👆 Mostrar apenas top 10",
+                                 width='stretch'):
+                    st.session_state["show_all_ranking"] = False
+                    st.rerun()
+
     with cB:
         st.markdown('<div class="sh">📊 Pontuação por Fase</div>', unsafe_allow_html=True)
         fig = go.Figure()
         for lbl,vals,color in [
-            ('Grupos', [b[4]['grupos'] for b in bettors], '#123A56'),
-            ('Bônus',  [b[4]['bonus']  for b in bettors], '#0D8587'),
-            ('MM',     [b[4]['mm']     for b in bettors], '#B2584E'),
+            ('Grupos', [b[4]['grupos'] for b in _display], '#123A56'),
+            ('Bônus',  [b[4]['bonus']  for b in _display], '#0D8587'),
+            ('MM',     [b[4]['mm']     for b in _display], '#B2584E'),
         ]:
             fig.add_trace(go.Bar(
-                name=lbl, y=[b[0] for b in bettors], x=vals, orientation='h',
+                name=lbl, y=[b[0] for b in _display], x=vals, orientation='h',
                 marker_color=color, text=vals, textposition='inside',
                 insidetextanchor='middle', textfont=dict(size=10, color='#fff')))
         fig.update_layout(
-            barmode='stack', height=250, margin=dict(l=0,r=5,t=5,b=5),
+            barmode='stack', height=max(300, len(_display) * 28), margin=dict(l=0,r=5,t=5,b=5),
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
             legend=dict(orientation='h', y=1.06, x=0, font=dict(size=10)),
             xaxis=dict(gridcolor='rgba(0,0,0,.08)', tickfont=dict(size=10)),
-            yaxis=dict(tickfont=dict(size=10)))
+            yaxis=dict(tickfont=dict(size=10), autorange='reversed'))
         st.plotly_chart(fig, width='stretch', config={'displayModeBar':False})
 
         if bettors:
@@ -1016,29 +1200,25 @@ with T1:
             "<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
             unsafe_allow_html=True,
         )
-        if st.button("👥 Todos", use_container_width=True):
+        if st.button("👥 Todos", width='stretch'):
             st.session_state["sel_bettors"] = all_names
             st.session_state["ms_bettors"] = all_names
             st.rerun()
 
     with fc2:
         if "sel_bettors" not in st.session_state:
-            st.session_state["sel_bettors"] = all_names
+                    st.session_state["sel_bettors"] = []
         valid_sel = [n for n in st.session_state["sel_bettors"] if n in all_names]
-        if not valid_sel:
-            valid_sel = all_names
         chosen = st.multiselect(
-            "Participantes:",
-            options=all_names,
-            default=valid_sel,
-            key="ms_bettors",
-            placeholder="Digite ou selecione participantes...",
-        )
-        st.session_state["sel_bettors"] = chosen if chosen else all_names
+                    "Participantes:",
+                    options=all_names,
+                    default=valid_sel,
+                    key="ms_bettors",
+                    placeholder="Selecione participantes para comparar...",
+                )
+        st.session_state["sel_bettors"] = chosen
 
     active_bettors = [b for b in bettors if b[0] in st.session_state["sel_bettors"]]
-    if not active_bettors:
-        active_bettors = bettors
 
     # Chart mode
     chart_mode = st.radio(
@@ -1099,7 +1279,7 @@ with T1:
                 cumul_y.append(running)
 
             color = CHART_COLORS[idx % len(CHART_COLORS)]
-            first = nm.split()[0] if " " in nm else nm
+            first = nm
             fig_evo.add_trace(go.Scatter(
                 x=dates_x, y=cumul_y,
                 mode="lines+markers",
@@ -1140,7 +1320,7 @@ with T1:
             '</div>'
         )
         st.markdown(legend_html, unsafe_allow_html=True)
-        st.plotly_chart(fig_evo, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_evo, width='stretch', config={"displayModeBar": False})
 
     else:  # Pontuação por fase
         PHASES_ORDER = ["Grupos","Bônus","R32","Oitavas","Quartas","Semi","3o Lugar","Final"]
@@ -1159,7 +1339,7 @@ with T1:
             [(nm, phase_pts(sc, sel_phase)) for nm,_,_,_,sc,_ in active_bettors],
             key=lambda x: -x[1],
         )
-        bar_names  = [p[0].split()[0] if " " in p[0] else p[0] for p in phase_data]
+        bar_names  = [p[0] for p in phase_data]
         bar_vals   = [p[1] for p in phase_data]
         bar_colors = [CHART_COLORS[i % len(CHART_COLORS)] for i in range(len(phase_data))]
 
@@ -1179,7 +1359,7 @@ with T1:
             yaxis=dict(gridcolor="rgba(128,128,128,.12)", tickfont=dict(size=11),
                        rangemode="tozero"),
         )
-        st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_bar, width='stretch', config={"displayModeBar": False})
 
 
 # ── TAB 2: GRUPOS ────────────────────────────────────────────────────
@@ -1201,7 +1381,7 @@ with T2:
         with _ca1:
             st.markdown("<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
                         unsafe_allow_html=True)
-            if st.button("👥 Todos", use_container_width=True, key="cons_todos"):
+            if st.button("👥 Todos", width='stretch', key="cons_todos"):
                 st.session_state["cons_sel"] = _cons_all_names
                 st.session_state["cons_ms"]  = _cons_all_names
                 st.rerun()
@@ -1224,7 +1404,7 @@ with T2:
         sel_grp = st.selectbox("Grupo:", GL, key="cons_grp")
 
         # Build columns for selected bettors
-        _cb_names = [b[0].split()[0] if " " in b[0] else b[0] for b in _cons_bettors]
+        _cb_names = [b[0] for b in _cons_bettors]
         _STICKY_TH_G = ("position:sticky;left:0;z-index:2;background:#0D2B40;"
                         "text-align:left;white-space:nowrap;min-width:180px")
         hdr_cells = "".join(
@@ -1388,7 +1568,7 @@ with T3:
         with _f1:
             st.markdown("<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
                         unsafe_allow_html=True)
-            if st.button("👥 Todos", use_container_width=True, key="mm_todos"):
+            if st.button("👥 Todos", width='stretch', key="mm_todos"):
                 st.session_state["mm_sel_bettors"] = _all_btr_names
                 st.session_state["mm_ms_bettors"]  = _all_btr_names
                 st.rerun()
@@ -1473,7 +1653,7 @@ with T3:
 
                 _th_cells = "".join(
                     f'<th style="text-align:center;white-space:nowrap;min-width:52px">'
-                    f'{(nm.split()[0] if " " in nm else nm)}</th>'
+                    f'{nm}</th>'
                     for nm, _, _ in btr
                 )
                 _header = f'<tr><th style="{_STICKY_TH}">Seleção</th>{_th_cells}</tr>'
@@ -1595,7 +1775,7 @@ with T3:
         yaxis=dict(gridcolor="rgba(128,128,128,.12)"),
     )
     fig2.update_traces(textposition="outside")
-    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar":False})
+    st.plotly_chart(fig2, width='stretch', config={"displayModeBar":False})
 
 # ── TAB 4: POR APOSTADOR ─────────────────────────────────────────────
 with T4:
