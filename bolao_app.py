@@ -189,6 +189,13 @@ html, body, [class*="css"] {
     background: linear-gradient(135deg, #0D2B40, #123A56);
     border-radius: 12px; padding: 10px; text-align: center; margin-bottom: 14px;
 }
+
+/* ── Seleção pills (Mata-Mata) */
+.pill { display: inline-block; margin-right: 16px; margin-bottom: 4px; white-space: nowrap; }
+.pill-real { color: inherit; }
+.pill-hit  { color: #22C55E; font-weight: 700; }
+.pill-miss { opacity: .55; }
+.pill-wait { opacity: .7; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -221,6 +228,7 @@ LOGO_TURIM_AZUL   = find_asset("logo_turim_azul.png")
 LOGO_TORI         = find_asset("logo_tori.png")
 MASCOTES          = find_asset("mascotes.png")
 FRONT_PAGE        = find_asset("front_page.png")
+FAVICON           = find_asset("favicon.png")
 
 # ── Cache persistente em disco (sobrevive a reinicializações do processo)
 _CACHE_PATH = SCRIPT_DIR / ".bolao_cache.pkl"
@@ -479,7 +487,7 @@ def FI(t):
     code = COUNTRY_ISO.get(str(t),'')
     if not code:
         return ''
-    return f'<img src="https://flagcdn.com/16x12/{code}.png" style="vertical-align:middle;margin-right:3px;border-radius:1px" loading="lazy">'
+    return f'<img src="https://flagcdn.com/16x12/{code}.png" style="vertical-align:middle;margin-right:5px;border-radius:1px" loading="lazy">'
 
 GRP_COLORS={
     'A':'#123A56','B':'#0D2B40','C':'#0D8587','D':'#1a6b6d',
@@ -970,10 +978,15 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════
 # HERO HEADER
 # ══════════════════════════════════════════════════════════════════════
-st.markdown("""
+_fav_b64 = img_to_b64(FAVICON) if FAVICON else ""
+_hero_icon = (
+    f'<img src="data:image/png;base64,{_fav_b64}" style="width:6rem;height:6rem;object-fit:contain">'
+    if _fav_b64 else '<span style="font-size:2.5rem">⚽</span>'
+)
+st.markdown(f"""
 <div class="hero">
   <div style="display:flex;align-items:center;gap:16px">
-    <div style="font-size:2.5rem">⚽</div>
+    <div>{_hero_icon}</div>
     <div>
       <div class="hero-title">Bolão Copa do Mundo 2026</div>
       <div class="hero-sub">Dashboard Oficial · Turim MFO</div>
@@ -1192,14 +1205,8 @@ with T1:
     all_names = [b[0] for b in bettors]
 
     # Participant filter
-    # Align button height with multiselect using a hidden label trick
-    fc1, fc2 = st.columns([1, 5])
+    fc1, fc2 = st.columns([1, 5], vertical_alignment="bottom")
     with fc1:
-        # Hidden label so button aligns with multiselect (same label height)
-        st.markdown(
-            "<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
-            unsafe_allow_html=True,
-        )
         if st.button("👥 Todos", width='stretch'):
             st.session_state["sel_bettors"] = all_names
             st.session_state["ms_bettors"] = all_names
@@ -1377,20 +1384,16 @@ with T2:
 
         # Participant filter
         _cons_all_names = [b[0] for b in bettors]
-        _ca1, _ca2 = st.columns([1, 4])
+        _ca1, _ca2 = st.columns([1, 4], vertical_alignment="bottom")
         with _ca1:
-            st.markdown("<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
-                        unsafe_allow_html=True)
             if st.button("👥 Todos", width='stretch', key="cons_todos"):
                 st.session_state["cons_sel"] = _cons_all_names
                 st.session_state["cons_ms"]  = _cons_all_names
                 st.rerun()
         with _ca2:
             if "cons_sel" not in st.session_state:
-                st.session_state["cons_sel"] = _cons_all_names
+                st.session_state["cons_sel"] = []
             _cons_valid = [n for n in st.session_state["cons_sel"] if n in _cons_all_names]
-            if not _cons_valid:
-                _cons_valid = _cons_all_names
             _cons_chosen = st.multiselect(
                 "Participantes:",
                 options=_cons_all_names,
@@ -1398,15 +1401,25 @@ with T2:
                 key="cons_ms",
                 placeholder="Selecione participantes...",
             )
-            st.session_state["cons_sel"] = _cons_chosen if _cons_chosen else _cons_all_names
+            st.session_state["cons_sel"] = _cons_chosen
         _cons_bettors = [b for b in bettors if b[0] in st.session_state["cons_sel"]] or bettors
 
         sel_grp = st.selectbox("Grupo:", GL, key="cons_grp")
 
         # Build columns for selected bettors
         _cb_names = [b[0] for b in _cons_bettors]
-        _STICKY_TH_G = ("position:sticky;left:0;z-index:2;background:#0D2B40;"
-                        "text-align:left;white-space:nowrap;min-width:180px")
+
+        # Compute sticky "Jogo" column width based on longest match name in this group
+        _max_jogo_chars = max(
+            (len(t1) + 3 + len(t2))  # 3 = len(" × ")
+            for _, g_, t1, t2 in GROUP_FIXTURES
+            if g_ == sel_grp
+        ) if any(g_ == sel_grp for _, g_, _, _ in GROUP_FIXTURES) else 20
+        _jogo_col_w = max(130, _max_jogo_chars * 7 + 50)  # ~7px/char + 2 flags + padding
+
+        _STICKY_TH_G = (f"position:sticky;left:0;z-index:2;background:#0D2B40;"
+                        f"text-align:left;white-space:nowrap;"
+                        f"width:{_jogo_col_w}px;min-width:{_jogo_col_w}px")
         hdr_cells = "".join(
             f'<th style="white-space:nowrap;text-align:center;min-width:54px">{n}</th>'
             for n in _cb_names
@@ -1433,8 +1446,10 @@ with T2:
                           '#FB923C' if pts_==2 else '#F87171' if pts_==0 else 'inherit')
                 cells += f'<td style="color:{color_};text-align:center">{bs_}</td>'
             _td_jogo = (f'<td style="position:sticky;left:0;z-index:1;'
+                        f'background:var(--background-color,white);'
                         f'box-shadow:2px 0 4px rgba(0,0,0,.08);'
-                        f'min-width:180px;font-size:.75rem">'
+                        f'width:{_jogo_col_w}px;min-width:{_jogo_col_w}px;'
+                        f'white-space:nowrap;font-size:.75rem">'
                         f'{FI(t1)}{t1} × {FI(t2)}{t2}</td>')
             rows_html += (f'<tr>{_td_jogo}'
                           f'<td style="opacity:.55;font-size:.72rem;text-align:center">{ds}</td>'
@@ -1564,20 +1579,16 @@ with T3:
         btr_all = [(nm, prnd, sc) for nm, gb, bb, xm, sc, prnd in bettors]
 
         _all_btr_names = [nm for nm, _, _ in btr_all]
-        _f1, _f2 = st.columns([1, 5])
+        _f1, _f2 = st.columns([1, 5], vertical_alignment="bottom")
         with _f1:
-            st.markdown("<label style='font-size:.875rem;opacity:0;display:block'>_</label>",
-                        unsafe_allow_html=True)
             if st.button("👥 Todos", width='stretch', key="mm_todos"):
                 st.session_state["mm_sel_bettors"] = _all_btr_names
                 st.session_state["mm_ms_bettors"]  = _all_btr_names
                 st.rerun()
         with _f2:
             if "mm_sel_bettors" not in st.session_state:
-                st.session_state["mm_sel_bettors"] = _all_btr_names
+                st.session_state["mm_sel_bettors"] = []
             _valid_mm = [n for n in st.session_state["mm_sel_bettors"] if n in _all_btr_names]
-            if not _valid_mm:
-                _valid_mm = _all_btr_names
             _chosen_mm = st.multiselect(
                 "Participantes:",
                 options=_all_btr_names,
@@ -1585,7 +1596,7 @@ with T3:
                 key="mm_ms_bettors",
                 placeholder="Selecione participantes...",
             )
-            st.session_state["mm_sel_bettors"] = _chosen_mm if _chosen_mm else _all_btr_names
+            st.session_state["mm_sel_bettors"] = _chosen_mm
 
         btr = [b for b in btr_all if b[0] in st.session_state["mm_sel_bettors"]]
         if not btr:
@@ -1610,10 +1621,12 @@ with T3:
 
         _STICKY_TH = ("position:sticky;left:0;z-index:2;background:#0D2B40;"
                       "min-width:160px;text-align:left")
-        _STICKY_TD_HIT  = ("position:sticky;left:0;z-index:1;background:rgba(13,133,135,.18);"
-                           "min-width:160px;font-weight:700;color:#0D8587")
-        _STICKY_TD_MISS = ("position:sticky;left:0;z-index:1;background:rgba(18,58,86,.08);"
-                           "min-width:160px;opacity:.6")
+        _STICKY_TD_HIT  = ("position:sticky;left:0;z-index:1;background:var(--background-color,white);"
+                           "min-width:160px;font-weight:700;color:#0D8587;"
+                           "border-right:2px solid rgba(13,133,135,.3)")
+        _STICKY_TD_MISS = ("position:sticky;left:0;z-index:1;background:var(--background-color,white);"
+                           "min-width:160px;opacity:.6;"
+                           "border-right:2px solid rgba(128,128,128,.15)")
         _STICKY_FOOT    = ("position:sticky;left:0;z-index:1;background:#0D2B40;"
                            "color:white;font-size:.7rem;font-weight:700;min-width:160px")
 
