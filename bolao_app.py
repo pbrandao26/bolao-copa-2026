@@ -230,6 +230,9 @@ MASCOTES          = find_asset("mascotes.png")
 FRONT_PAGE        = find_asset("front_page.png")
 FAVICON           = find_asset("favicon.png")
 
+# ── Feature flags
+MOSTRAR_SIMULACAO = False   # True → mostra aba 🔮 Simulação; False → sistema idêntico ao atual
+
 # ── Cache persistente em disco (sobrevive a reinicializações do processo)
 _CACHE_PATH = SCRIPT_DIR / ".bolao_cache.pkl"
 
@@ -886,7 +889,7 @@ def load_consolidada(path):
 
     return result
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)  
 def load_all_data_consolidated(gab_path, consol_path):
     """Versão rápida: lê uma única planilha consolidada."""
     t495      = load_t495(gab_path)
@@ -1050,7 +1053,12 @@ st.markdown("")
 # ══════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════
-T1,T2,T3,T4 = st.tabs(["🏆 Ranking","⚽ Grupos","🗓️ Mata-Mata","👤 Por Apostador"])
+_tab_labels = ["🏆 Ranking","⚽ Grupos","🗓️ Mata-Mata","👤 Por Apostador"]
+if MOSTRAR_SIMULACAO:
+    _tab_labels.append("🔮 Simulação")
+_tabs = st.tabs(_tab_labels)
+T1, T2, T3, T4 = _tabs[:4]
+T5 = _tabs[4] if MOSTRAR_SIMULACAO else None
 
 # ── TAB 1: RANKING ───────────────────────────────────────────────────
 with T1:
@@ -1949,6 +1957,201 @@ with T4:
                     unsafe_allow_html=True,
                 )
 
+
+# ══════════════════════════════════════════════════════════════════════
+# TAB 5: SIMULAÇÃO
+# ══════════════════════════════════════════════════════════════════════
+if MOSTRAR_SIMULACAO:
+    with T5:
+        st.markdown(
+            '<div style="font-size:.85rem;opacity:.65;margin-bottom:14px">'
+            '🔮 Simule resultados de jogos ainda não realizados e veja como o ranking mudaria. '
+            'Resultados já registrados no gabarito aparecem bloqueados (🔒). '
+            'Preencha os placares e clique em <b>▶ Calcular</b>.</div>',
+            unsafe_allow_html=True)
+
+        # ── Init session state ────────────────────────────────────────
+        if "sim_rv" not in st.session_state:
+            st.session_state["sim_rv"] = 0      # reset version (muda key dos widgets ao limpar)
+        if "sim_gr"  not in st.session_state:
+            st.session_state["sim_gr"]  = {}
+        if "sim_mm"  not in st.session_state:
+            st.session_state["sim_mm"]  = {}
+        if "sim_res" not in st.session_state:
+            st.session_state["sim_res"] = None
+        _rv = st.session_state["sim_rv"]
+
+        # ── Clear button ──────────────────────────────────────────────
+        _cl1, _ = st.columns([1, 5])
+        with _cl1:
+            if st.button("🗑 Limpar tudo", width='stretch', key="sim_clear"):
+                st.session_state["sim_rv"]  += 1
+                st.session_state["sim_gr"]   = {}
+                st.session_state["sim_mm"]   = {}
+                st.session_state["sim_res"]  = None
+                st.rerun()
+
+        # ══ Fase de Grupos ════════════════════════════════════════════
+        st.markdown('<div class="sh">⚽ Fase de Grupos</div>', unsafe_allow_html=True)
+        st.caption("Abra cada grupo, preencha os placares dos jogos não realizados e feche.")
+
+        for _sg in GL:
+            _sg_games = [(m, gd, t1, t2)
+                         for m, (gd, g, t1, t2) in enumerate(GROUP_FIXTURES)
+                         if g == _sg]
+            _sg_teams = ", ".join(dict.fromkeys(t for _,_,t1,t2 in _sg_games for t in [t1,t2]))
+            with st.expander(f"Grupo {_sg} — {_sg_teams}", expanded=False):
+                for _m, _, _t1, _t2 in _sg_games:
+                    if _m in gr:
+                        _r = gr[_m]
+                        st.markdown(
+                            f'<div style="padding:3px 0;font-size:.82rem;opacity:.65">'
+                            f'🔒 {FI(_t1)}{_t1} <b>{_r[0]}–{_r[1]}</b> {FI(_t2)}{_t2}</div>',
+                            unsafe_allow_html=True)
+                        continue
+                    _cur = st.session_state["sim_gr"].get(_m, (0, 0))
+                    _sc1, _sc2, _sc3, _sc4, _sc5 = st.columns([3, 1, 0.4, 1, 3])
+                    _sc1.markdown(
+                        f'<div style="text-align:right;padding-top:6px;'
+                        f'font-size:.85rem;font-weight:700">{FI(_t1)}{_t1}</div>',
+                        unsafe_allow_html=True)
+                    _s1 = _sc2.number_input("", 0, 20, int(_cur[0]),
+                                            key=f"sg_{_m}_1_v{_rv}",
+                                            label_visibility="collapsed")
+                    _sc3.markdown(
+                        '<div style="text-align:center;padding-top:6px;opacity:.4">×</div>',
+                        unsafe_allow_html=True)
+                    _s2 = _sc4.number_input("", 0, 20, int(_cur[1]),
+                                            key=f"sg_{_m}_2_v{_rv}",
+                                            label_visibility="collapsed")
+                    _sc5.markdown(
+                        f'<div style="padding-top:6px;font-size:.85rem;font-weight:700">'
+                        f'{FI(_t2)}{_t2}</div>',
+                        unsafe_allow_html=True)
+                    st.session_state["sim_gr"][_m] = (int(_s1), int(_s2))
+
+        # Resolve bracket from current simulated + real group results
+        _mgr_bracket = {**st.session_state["sim_gr"]}
+        for _m, _v in gr.items():
+            _mgr_bracket[_m] = _v  # resultado real sobrescreve simulado
+
+        if _mgr_bracket:
+            _sim_r32r, *_ = build_r32(sort_st(calc_st(_mgr_bracket)), t495)
+        else:
+            _sim_r32r = {_m: ('?', '?') for _m in range(16)}
+
+        # Build synthetic mmr from user KO selections + real mmr
+        _sim_mmr_full = {}
+        for _m, _v in mmr.items():
+            _sim_mmr_full[_m] = _v
+        for _m, _choice in st.session_state["sim_mm"].items():
+            if _m not in mmr:
+                _sim_mmr_full[_m] = (1, 0, None) if _choice == 't1' else (0, 1, None)
+
+        # Resolve full KO bracket to get team names for all matches
+        _, _sim_tn = build_bracket(_sim_r32r, _sim_mmr_full)
+
+        # ══ Mata-Mata ═════════════════════════════════════════════════
+        st.markdown('<div class="sh">🗓️ Mata-Mata</div>', unsafe_allow_html=True)
+        st.caption("Os times de cada jogo são resolvidos automaticamente a partir da simulação dos grupos.")
+
+        _KO_RNDS_SIM = [
+            ('R32',     'Rodada de 32',        range(0,  16)),
+            ('Oitavas', 'Oitavas de Final',    range(16, 24)),
+            ('Quartas', 'Quartas de Final',    range(24, 28)),
+            ('Semi',    'Semifinais',           range(28, 30)),
+            ('3o Lugar','Disputa de 3º Lugar', range(30, 31)),
+            ('Final',   'Final',               range(31, 32)),
+        ]
+        for _rk, _rl, _rrange in _KO_RNDS_SIM:
+            with st.expander(
+                f"{RND_ICO.get(_rk,'⚪')} {_rl} — {KO_PTS[_rk]} pts/seleção",
+                expanded=False):
+                for _m in _rrange:
+                    _t1_mm, _t2_mm = _sim_tn.get(_m, ('?', '?'))
+                    _t1_mm = _t1_mm or '?'
+                    _t2_mm = _t2_mm or '?'
+
+                    if _m in mmr:  # resultado real — bloqueado
+                        _res_mm = mmr[_m]
+                        _win_mm = (_t1_mm if _res_mm[0] > _res_mm[1]
+                                   else (_t2_mm if _res_mm[1] > _res_mm[0]
+                                         else (_t1_mm if _res_mm[2]=='S1' else _t2_mm)))
+                        st.markdown(
+                            f'<div style="padding:3px 0;font-size:.82rem;opacity:.65">'
+                            f'🔒 {FI(_t1_mm)}{_t1_mm} × {FI(_t2_mm)}{_t2_mm} → '
+                            f'<b>{FI(_win_mm)}{_win_mm}</b> avançou</div>',
+                            unsafe_allow_html=True)
+                        continue
+
+                    if _t1_mm == '?' or _t2_mm == '?':
+                        _id = KO[_m][1] if _m < len(KO) else f"J{_m+1}"
+                        st.markdown(
+                            f'<div style="padding:3px 0;font-size:.82rem;opacity:.4">'
+                            f'⏳ {_id} — aguardando definição das fases anteriores</div>',
+                            unsafe_allow_html=True)
+                        continue
+
+                    _cur_choice = st.session_state["sim_mm"].get(_m)
+                    _def_idx = 1 if _cur_choice == 't2' else 0
+                    _chosen = st.radio(
+                        f"{_t1_mm}  ×  {_t2_mm}",
+                        options=[_t1_mm, _t2_mm],
+                        index=_def_idx,
+                        key=f"mm_{_m}_v{_rv}",
+                        horizontal=True,
+                    )
+                    st.session_state["sim_mm"][_m] = 't1' if _chosen == _t1_mm else 't2'
+
+        # ══ Calculate button ══════════════════════════════════════════
+        st.markdown("---")
+        if st.button("▶ Calcular Ranking Simulado", width='stretch', key="sim_calc"):
+            _mgr_calc = dict(gr)
+            for _m, _vv in st.session_state["sim_gr"].items():
+                if _m not in _mgr_calc:
+                    _mgr_calc[_m] = _vv
+
+            _mmmr_calc = dict(mmr)
+            for _m, _ch in st.session_state["sim_mm"].items():
+                if _m not in _mmmr_calc:
+                    _mmmr_calc[_m] = (1, 0, None) if _ch == 't1' else (0, 1, None)
+
+            _sim_ranked = []
+            for _nm, _gb, _bb, _xm, _real_sc, _ in bettors:
+                _sc_sim = score_all(_gb, _xm, _bb, _mgr_calc, _mmmr_calc, br, t495)
+                _delta  = _sc_sim["total"] - _real_sc["total"]
+                _sim_ranked.append((_nm, _sc_sim["total"], _real_sc["total"], _delta))
+            _sim_ranked.sort(key=lambda x: -x[1])
+            st.session_state["sim_res"] = _sim_ranked
+
+        # ══ Ranking simulado ══════════════════════════════════════════
+        if st.session_state.get("sim_res"):
+            st.markdown('<div class="sh">🏆 Ranking Simulado</div>', unsafe_allow_html=True)
+            _hcols = st.columns([0.5, 4, 1.5, 1.5, 1.5])
+            for _c, _h in zip(_hcols, ["#", "Participante", "Simulado", "Atual", "Δ"]):
+                _c.markdown(
+                    f'<div style="font-size:.7rem;font-weight:700;opacity:.5;'
+                    f'text-transform:uppercase;letter-spacing:.8px">{_h}</div>',
+                    unsafe_allow_html=True)
+            for _rk, (_nm, _sp, _rp, _dlt) in enumerate(st.session_state["sim_res"], 1):
+                _dclr = "#22C55E" if _dlt > 0 else "#F87171" if _dlt < 0 else "inherit"
+                _dstr = f"+{_dlt}" if _dlt > 0 else str(_dlt)
+                _rc = st.columns([0.5, 4, 1.5, 1.5, 1.5])
+                _rc[0].markdown(
+                    f'<div style="font-size:.82rem;opacity:.5">{MEDALS.get(_rk, _rk)}</div>',
+                    unsafe_allow_html=True)
+                _rc[1].markdown(
+                    f'<div style="font-size:.85rem;font-weight:600">{_nm}</div>',
+                    unsafe_allow_html=True)
+                _rc[2].markdown(
+                    f'<div style="font-size:.9rem;font-weight:900;color:#D6B864">{_sp}</div>',
+                    unsafe_allow_html=True)
+                _rc[3].markdown(
+                    f'<div style="font-size:.85rem;opacity:.55">{_rp}</div>',
+                    unsafe_allow_html=True)
+                _rc[4].markdown(
+                    f'<div style="font-size:.85rem;font-weight:700;color:{_dclr}">{_dstr}</div>',
+                    unsafe_allow_html=True)
 
 # ── Footer
 st.markdown("---")
