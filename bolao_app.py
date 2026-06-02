@@ -684,6 +684,7 @@ JOGADORES_ARTILHEIRO: list[tuple[str, str]] = [
     ('Beraldo', 'Brasil'),
     ('Guilherme Arana', 'Brasil'),
     ('Danilo', 'Brasil'),
+    ('Danilo Santos','Brasil'),
     ('Bruno Guimarães', 'Brasil'),
     ('João Gomes', 'Brasil'),
     ('Lucas Paquetá', 'Brasil'),
