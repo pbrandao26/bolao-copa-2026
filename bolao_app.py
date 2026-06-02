@@ -1711,8 +1711,8 @@ def load_consolidada(path):
 
     return result
 
-#@st.cache_resource(show_spinner=False)  
-def load_all_data_consolidated(gab_path, consol_path):
+@st.cache_resource(show_spinner=False)  
+def load_all_data_consolidated(gab_path, consol_path, fp=None):
     """Versão rápida: lê uma única planilha consolidada."""
     t495      = load_t495(gab_path)
     gr,mmr,br = load_gab(gab_path)
@@ -1726,8 +1726,8 @@ def load_all_data_consolidated(gab_path, consol_path):
     bettors.sort(key=lambda x: -x[4]["total"])
     return t495, gr, mmr, br, bettors
 
-#@st.cache_data(show_spinner=False)
-def load_all_data(gab_path, parts_tuple):
+@st.cache_data(show_spinner=False)
+def load_all_data(gab_path, parts_tuple, fp=None):
     t495      = load_t495(gab_path)
     gr,mmr,br = load_gab(gab_path)
 
@@ -1838,9 +1838,9 @@ if _disk_data is not None:
 else:
     with st.spinner("Carregando dados..."):
         if CONSOLIDADA_PATH.exists():
-            t495, gr, mmr, br, bettors = load_all_data_consolidated(gab_path, str(CONSOLIDADA_PATH))
+            t495, gr, mmr, br, bettors = load_all_data_consolidated(gab_path, str(CONSOLIDADA_PATH), _fp)
         else:
-            t495, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts))
+            t495, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts), _fp)
     try:
         with open(_CACHE_PATH, "wb") as _cf:
             pickle.dump({"fp": _fp, "data": (t495, gr, mmr, br, bettors)}, _cf,
