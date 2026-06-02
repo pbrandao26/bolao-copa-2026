@@ -53,8 +53,11 @@ def consolidar():
     erros = []
 
     for i, f in enumerate(part_files, 1):
-        nm = re.sub(r"(?i)^Bolao_Copa2026_TurimMFO_", "", f.name)
-        nm = nm.replace(".xlsx", "").replace("_", " ").strip()
+        nm = re.sub(r"(?i)^Bolao_Copa2026_TurimMFO[_]?", "", f.name)
+        nm = nm.replace(".xlsx", "")
+        nm = re.sub(r"[{}\[\]()]", "", nm)   # remove { } [ ] ( )
+        nm = nm.replace("_", " ").strip()
+        nm = re.sub(r"\s+", " ", nm)         # colapsa espaços duplos
 
         try:
             wb = load_workbook(f, data_only=True, read_only=True)
