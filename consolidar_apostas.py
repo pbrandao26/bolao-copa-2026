@@ -95,6 +95,7 @@ def consolidar():
             ws = wb["Apostas - Bonus"]
             row_bon.append(ws.cell(row=5, column=2).value)
             row_bon.append(ws.cell(row=5, column=3).value)
+            #print(ws.cell(row=5, column=2).value)
         else:
             row_bon += [None, None]
         ws_bon.append(row_bon)
