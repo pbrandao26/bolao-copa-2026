@@ -11,7 +11,7 @@ import plotly.express as px
 from openpyxl import load_workbook
 import os, glob, re, base64, hashlib, pickle
 from concurrent.futures import ThreadPoolExecutor
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 from datetime import date
 from pathlib import Path
 from dotenv import load_dotenv
@@ -1745,6 +1745,77 @@ def load_all_data(gab_path, parts_tuple):
     bettors.sort(key=lambda x: -x[4]['total'])
     return t495, gr, mmr, br, bettors
 
+@st.cache_resource(show_spinner=False)
+def compute_stats(fingerprint, _bettors):
+    """Agrega consenso do bolão UMA vez (cacheado por fingerprint).
+    `_bettors` tem prefixo _ para o Streamlit não tentar fazer hash dele;
+    a chave de cache é só o `fingerprint` (string)."""
+    n = len(_bettors)
+ 
+    # ── Consenso de placares (fase de grupos) ──
+    group_dist: dict = {}                 # m -> Counter{(g1,g2): qtd}
+    for _nm, _gb, *_ in _bettors:
+        for _m, _bv in _gb.items():
+            if _bv is None:
+                continue
+            try:
+                _key = (int(_bv[0]), int(_bv[1]))
+            except Exception:
+                continue
+            group_dist.setdefault(_m, Counter())[_key] += 1
+ 
+    # Conformidade = média da popularidade dos placares de cada apostador
+    conformity: dict = {}
+    for _nm, _gb, *_ in _bettors:
+        _pops = []
+        for _m, _bv in _gb.items():
+            _c = group_dist.get(_m)
+            if not _c:
+                continue
+            try:
+                _key = (int(_bv[0]), int(_bv[1]))
+            except Exception:
+                continue
+            _tot = sum(_c.values())
+            if _tot:
+                _pops.append(_c.get(_key, 0) / _tot)
+        conformity[_nm] = (sum(_pops) / len(_pops)) if _pops else 0.0
+ 
+    # Ranking de ousadia: menor conformidade = mais ousado = 1º
+    _order = sorted(conformity.items(), key=lambda x: x[1])
+    conformity_rank = {nm: (i + 1, n) for i, (nm, _v) in enumerate(_order)}
+ 
+    # ── Consenso do mata-mata por fase ──
+    rnd_slots: dict = {}
+    for _m, (_rnd, *_r) in enumerate(KO):
+        rnd_slots[_rnd] = rnd_slots.get(_rnd, 0) + 1
+    ko_dist = {rnd: Counter() for rnd in rnd_slots}
+    for _nm, _gb, _bb, _xm, _sc, _prnd in _bettors:
+        for _rnd, _teams in _prnd.items():
+            for _t in _teams:
+                if _t and _t != '?':
+                    ko_dist[_rnd][_t] += 1
+ 
+    # ── Bônus: distribuições ──
+    art_dist = Counter()
+    mg_dist = Counter()
+    champ_dist = Counter()
+    for _nm, _gb, _bb, _xm, _sc, _prnd in _bettors:
+        _a = _bb[0] if _bb else None
+        _mg = _bb[1] if _bb else None
+        if _a:
+            art_dist[str(_a).strip()] += 1
+        if _mg:
+            mg_dist[str(_mg).strip()] += 1
+        for _t in _prnd.get('Final', set()):
+            if _t and _t != '?':
+                champ_dist[_t] += 1
+ 
+    return dict(
+        n=n, group_dist=group_dist, conformity=conformity,
+        conformity_rank=conformity_rank, rnd_slots=rnd_slots, ko_dist=ko_dist,
+        art_dist=art_dist, mg_dist=mg_dist, champ_dist=champ_dist,
+    )
 # ══════════════════════════════════════════════════════════════════════
 # SIDEBAR  — nativa, sem CSS override
 # ══════════════════════════════════════════════════════════════════════
@@ -1847,7 +1918,9 @@ else:
                         protocol=pickle.HIGHEST_PROTOCOL)
     except Exception:
         pass
+
 maxp = max((b[4]['total'] for b in bettors), default=1) or 1
+stats = compute_stats(_fp, bettors)
 
 rw,rn = {},{}
 if gr:
@@ -2639,146 +2712,355 @@ with T4:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # Bônus
-    st.markdown('<div class="sh">🎁 Bônus Pré-Copa</div>', unsafe_allow_html=True)
-    ab,mb = bbb; ar,mr_ = (br or (None,None))
-    for col,(lbl,bv,rv,pts) in zip(st.columns(2),[
-        ("⚽ Artilheiro", ab, ar, bsc['art_pts']),
-        ("🏅 Melhor Campanha", mb, mr_, bsc['mg_pts']),
-    ]):
-        ok  = bv and rv and str(bv).strip().lower()==str(rv).strip().lower()
-        ico = "✅" if ok else ("❌" if rv else "⏳")
-        bvs = f"{F(bv)} {bv}" if bv else "—"
-        rvs = f"{F(rv)} {rv}" if rv else "Aguardando"
-        col.markdown(f"""<div class="bc">
-          <div class="bc-lbl">{lbl}</div>
-          <div class="bc-ico">{ico}</div>
-          <div class="bc-bet">Apostou: {bvs}</div>
-          <div class="bc-real">Real: {rvs}</div>
-          <div class="bc-pts">{pts} pts</div>
-        </div>""", unsafe_allow_html=True)
+    _sub_resumo, _sub_stats = st.tabs(["📋 Resumo", "📊 Estatísticas"])
+ 
+    # ════════════════════════════════════════════════════════════════
+    # SUB-ABA: RESUMO (conteúdo original da aba Por Apostador)
+    # ════════════════════════════════════════════════════════════════
+    with _sub_resumo:
+        # Bônus
+        st.markdown('<div class="sh">🎁 Bônus Pré-Copa</div>', unsafe_allow_html=True)
+        ab,mb = bbb; ar,mr_ = (br or (None,None))
+        for col,(lbl,bv,rv,pts) in zip(st.columns(2),[
+            ("⚽ Artilheiro", ab, ar, bsc['art_pts']),
+            ("🏅 Melhor Campanha", mb, mr_, bsc['mg_pts']),
+        ]):
+            ok  = bv and rv and str(bv).strip().lower()==str(rv).strip().lower()
+            ico = "✅" if ok else ("❌" if rv else "⏳")
+            bvs = f"{F(bv)} {bv}" if bv else "—"
+            rvs = f"{F(rv)} {rv}" if rv else "Aguardando"
+            col.markdown(f"""<div class="bc">
+            <div class="bc-lbl">{lbl}</div>
+            <div class="bc-ico">{ico}</div>
+            <div class="bc-bet">Apostou: {bvs}</div>
+            <div class="bc-real">Real: {rvs}</div>
+            <div class="bc-pts">{pts} pts</div>
+            </div>""", unsafe_allow_html=True)
 
-    # Grupos
-    st.markdown('<div class="sh">⚽ Fase de Grupos — Jogo a Jogo</div>', unsafe_allow_html=True)
-    for row_g in [GL[i:i+3] for i in range(0,12,3)]:
-        gcols = st.columns(3)
-        for gcol,grp in zip(gcols,row_g):
-            with gcol:
-                color = GRP_COLORS.get(grp,'#123A56')
-                st.markdown(
-                    f'<div style="font-weight:800;color:{color};font-size:.87rem;margin-bottom:5px">Grupo {grp}</div>',
+        # Grupos
+        st.markdown('<div class="sh">⚽ Fase de Grupos — Jogo a Jogo</div>', unsafe_allow_html=True)
+        for row_g in [GL[i:i+3] for i in range(0,12,3)]:
+            gcols = st.columns(3)
+            for gcol,grp in zip(gcols,row_g):
+                with gcol:
+                    color = GRP_COLORS.get(grp,'#123A56')
+                    st.markdown(
+                        f'<div style="font-weight:800;color:{color};font-size:.87rem;margin-bottom:5px">Grupo {grp}</div>',
+                        unsafe_allow_html=True)
+                    html = ""
+                    for m,(gdate,g,t1,t2) in enumerate(GROUP_FIXTURES):
+                        if g!=grp: continue
+                        pts  = bsc['gdet'].get(m); bet = bgb.get(m); real = gr.get(m)
+                        bs   = f"{bet[0]}–{bet[1]}" if bet else "—"
+                        rs   = f"{real[0]}–{real[1]}" if real else "⏳"
+                        bdg  = ('<span class="b5">5</span>' if pts==5 else
+                                '<span class="b3">3</span>' if pts==3 else
+                                '<span class="b2">2</span>' if pts==2 else
+                                '<span class="b0">0</span>' if pts==0 else
+                                '<span class="bN">–</span>')
+                        ds = gdate.strftime("%d/%m")
+                        html += f"""<div class="mr">
+                        <div class="mr-t">{FI(t1)}{t1}<br>{FI(t2)}{t2}</div>
+                        <span class="mr-s"><span style="opacity:.5;font-size:.7rem">{ds}</span> {bs} → {rs}</span>
+                        {bdg}
+                        </div>"""
+                    st.markdown(html, unsafe_allow_html=True)
+
+        # Mata-mata
+        # Mata-mata por apostador
+        # ── Mata-Mata: seleções por fase ──────────────────────────────────────
+        st.markdown('<div class="sh">🏆 Mata-Mata — Seleções por Fase</div>', unsafe_allow_html=True)
+
+        bpicks_b, bnames_b = sim_bet(bgb, bxm, t495)
+        b_prnd: dict = {}
+        for m, (rnd, *_) in enumerate(KO):
+            p = bpicks_b.get(m)
+            if p and p != "?":
+                b_prnd.setdefault(rnd, set()).add(p)
+
+        # Reuse real_by_rnd from T3 scope (same module)
+
+        for rnd, mlist in rnd_ms.items():
+            pv         = KO_PTS[rnd]
+            real_set   = real_by_rnd.get(rnd, set())
+            my_picks   = b_prnd.get(rnd, set())
+            started    = bool(real_set)
+            pts_earned = sum(bsc["mdet"].get(m,0) or 0 for m in mlist)
+            correct    = len(my_picks & real_set) if started else 0
+            missed     = my_picks - real_set         # picked but didn't advance
+            not_picked = real_set - my_picks         # advanced but not picked
+            ico        = RND_ICO.get(rnd,"⚪")
+
+            pts_label = (f"+{pts_earned} pts" if pts_earned > 0 else
+                        ("⏳ aguardando" if not started else "0 pts"))
+
+            with st.expander(
+                f"{ico} {rnd}  ({pv} pts/seleção) — {pts_label}",
+                expanded=(rnd in ["R32","Oitavas"]),
+            ):
+                col_p, col_r = st.columns(2, gap="large")
+
+                with col_p:
+                    _pick_lbl = {
+                        '3o Lugar': '🥉 Apostou que seria a 3ª Colocada',
+                        'Final':    '🏆 Apostou que seria a Campeã',
+                    }.get(rnd, f'🎯 Apostou que avançariam')
+                    st.markdown(
+                        f'<div class="rnd-section-lbl">{_pick_lbl} ({len(my_picks)})</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if my_picks:
+                        html_p = ""
+                        for team in sorted(my_picks, key=str):
+                            in_real = team in real_set
+                            if not started:
+                                cls, ico_t = "pill-wait", "⏳"
+                            elif in_real:
+                                cls, ico_t = "pill-hit",  "✅"
+                            else:
+                                cls, ico_t = "pill-miss", "❌"
+                            html_p += f'<span class="pill {cls}">{ico_t} {FI(team)}{team}</span>'
+                        st.markdown(f'<div style="line-height:2">{html_p}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="opacity:.45;font-size:.82rem">Nenhuma seleção escolhida.</div>',
+                                    unsafe_allow_html=True)
+
+                with col_r:
+                    st.markdown(
+                        f'<div class="rnd-section-lbl">✅ Avançaram de verdade ({len(real_set)})</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if real_set:
+                        html_r = ""
+                        for team in sorted(real_set, key=str):
+                            picked_it = team in my_picks
+                            cls_r  = "pill-hit"  if picked_it else "pill-real"
+                            ico_r  = "🎯 " if picked_it else ""
+                            html_r += f'<span class="pill {cls_r}">{ico_r}{FI(team)}{team}</span>'
+                        st.markdown(f'<div style="line-height:2">{html_r}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="opacity:.45;font-size:.82rem">Aguardando resultados...</div>',
+                                    unsafe_allow_html=True)
+
+                # Score strip
+                if started:
+                    miss_str = (", ".join(f"{F(t)}{t}" for t in sorted(missed, key=str))
+                                if missed else "—")
+                    unexp_str = (", ".join(f"{F(t)}{t}" for t in sorted(not_picked, key=str))
+                                if not_picked else "—")
+                    st.markdown(
+                        f'<div class="score-strip">'
+                        f'<span>✅ <b style="color:#22C55E">{correct}</b> acertos</span>'
+                        f'<span>❌ <b style="color:#EF4444">{len(missed)}</b> erros</span>'
+                        f'<span style="opacity:.6">Não apostou em: {unexp_str}</span>'
+                        f'<span style="margin-left:auto;font-weight:800;color:#D6B864">{pts_earned} pts</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # ════════════════════════════════════════════════════════════════
+    # SUB-ABA: ESTATÍSTICAS
+    # ════════════════════════════════════════════════════════════════
+    with _sub_stats:
+ 
+        # Helpers locais ------------------------------------------------
+        def _mc(col, v, l):
+            col.markdown(
+                f'<div class="mc"><div class="mc-v">{v}</div>'
+                f'<div class="mc-l">{l}</div></div>', unsafe_allow_html=True)
+ 
+        def _cbar(flag_html, label, count, total, color="#0D8587", mark=False):
+            pct = (count / total * 100) if total else 0
+            edge = "outline:2px solid #D6B864;outline-offset:-2px;" if mark else ""
+            return (
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+                f'<div style="width:150px;font-size:.78rem;white-space:nowrap;'
+                f'overflow:hidden;text-overflow:ellipsis">{flag_html}{label}</div>'
+                f'<div style="flex:1;background:rgba(128,128,128,.12);border-radius:5px;height:18px">'
+                f'<div style="width:{pct:.0f}%;background:{color};height:100%;'
+                f'border-radius:5px;min-width:3px;{edge}"></div></div>'
+                f'<div style="width:70px;text-align:right;font-size:.72rem;font-weight:700">'
+                f'{pct:.0f}% <span style="opacity:.5;font-weight:400">({count})</span></div>'
+                f'</div>')
+ 
+        def _placar(t): return f"{t[0]}×{t[1]}"
+ 
+        _n = stats["n"]
+ 
+        # ── FEATURE 1: divergência nos placares de grupos ─────────────
+        st.markdown('<div class="sh">📐 Seus placares vs o consenso do bolão</div>',
                     unsafe_allow_html=True)
-                html = ""
-                for m,(gdate,g,t1,t2) in enumerate(GROUP_FIXTURES):
-                    if g!=grp: continue
-                    pts  = bsc['gdet'].get(m); bet = bgb.get(m); real = gr.get(m)
-                    bs   = f"{bet[0]}–{bet[1]}" if bet else "—"
-                    rs   = f"{real[0]}–{real[1]}" if real else "⏳"
-                    bdg  = ('<span class="b5">5</span>' if pts==5 else
-                            '<span class="b3">3</span>' if pts==3 else
-                            '<span class="b2">2</span>' if pts==2 else
-                            '<span class="b0">0</span>' if pts==0 else
-                            '<span class="bN">–</span>')
-                    ds = gdate.strftime("%d/%m")
-                    html += f"""<div class="mr">
-                      <div class="mr-t">{FI(t1)}{t1}<br>{FI(t2)}{t2}</div>
-                      <span class="mr-s"><span style="opacity:.5;font-size:.7rem">{ds}</span> {bs} → {rs}</span>
-                      {bdg}
-                    </div>"""
-                st.markdown(html, unsafe_allow_html=True)
-
-    # Mata-mata
-    # Mata-mata por apostador
-    # ── Mata-Mata: seleções por fase ──────────────────────────────────────
-    st.markdown('<div class="sh">🏆 Mata-Mata — Seleções por Fase</div>', unsafe_allow_html=True)
-
-    bpicks_b, bnames_b = sim_bet(bgb, bxm, t495)
-    b_prnd: dict = {}
-    for m, (rnd, *_) in enumerate(KO):
-        p = bpicks_b.get(m)
-        if p and p != "?":
-            b_prnd.setdefault(rnd, set()).add(p)
-
-    # Reuse real_by_rnd from T3 scope (same module)
-
-    for rnd, mlist in rnd_ms.items():
-        pv         = KO_PTS[rnd]
-        real_set   = real_by_rnd.get(rnd, set())
-        my_picks   = b_prnd.get(rnd, set())
-        started    = bool(real_set)
-        pts_earned = sum(bsc["mdet"].get(m,0) or 0 for m in mlist)
-        correct    = len(my_picks & real_set) if started else 0
-        missed     = my_picks - real_set         # picked but didn't advance
-        not_picked = real_set - my_picks         # advanced but not picked
-        ico        = RND_ICO.get(rnd,"⚪")
-
-        pts_label = (f"+{pts_earned} pts" if pts_earned > 0 else
-                     ("⏳ aguardando" if not started else "0 pts"))
-
-        with st.expander(
-            f"{ico} {rnd}  ({pv} pts/seleção) — {pts_label}",
-            expanded=(rnd in ["R32","Oitavas"]),
-        ):
-            col_p, col_r = st.columns(2, gap="large")
-
-            with col_p:
-                _pick_lbl = {
-                    '3o Lugar': '🥉 Apostou que seria a 3ª Colocada',
-                    'Final':    '🏆 Apostou que seria a Campeã',
-                }.get(rnd, f'🎯 Apostou que avançariam')
-                st.markdown(
-                    f'<div class="rnd-section-lbl">{_pick_lbl} ({len(my_picks)})</div>',
-                    unsafe_allow_html=True,
-                )
-                if my_picks:
-                    html_p = ""
-                    for team in sorted(my_picks, key=str):
-                        in_real = team in real_set
-                        if not started:
-                            cls, ico_t = "pill-wait", "⏳"
-                        elif in_real:
-                            cls, ico_t = "pill-hit",  "✅"
-                        else:
-                            cls, ico_t = "pill-miss", "❌"
-                        html_p += f'<span class="pill {cls}">{ico_t} {FI(team)}{team}</span>'
-                    st.markdown(f'<div style="line-height:2">{html_p}</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<div style="opacity:.45;font-size:.82rem">Nenhuma seleção escolhida.</div>',
+ 
+        _gd = stats["group_dist"]
+        _rows = []  # (m, t1, t2, mypick, mode, mode_pct, my_pct, total, my_n)
+        for _m,(_dt,_g,_t1,_t2) in enumerate(GROUP_FIXTURES):
+            _bv = bgb.get(_m)
+            _c  = _gd.get(_m)
+            if _bv is None or not _c:
+                continue
+            try: _mykey = (int(_bv[0]), int(_bv[1]))
+            except Exception: continue
+            _tot = sum(_c.values())
+            _mode, _mode_n = _c.most_common(1)[0]
+            _my_n = _c.get(_mykey, 0)
+            _rows.append((_m, _t1, _t2, _mykey, _mode,
+                          _mode_n/_tot, _my_n/_tot, _tot, _my_n))
+ 
+        if not _rows:
+            st.info("Sem palpites de grupos suficientes para comparar ainda.")
+        else:
+            _n_main   = sum(1 for r in _rows if r[3] == r[4])
+            _n_unique = sum(1 for r in _rows if r[8] == 1)
+            _rank, _rn = stats["conformity_rank"].get(bnm, (0, 0))
+ 
+            _mcols = st.columns(3)
+            _mc(_mcols[0], f"{_n_main}/{len(_rows)}", "Cravou o placar + popular")
+            _mc(_mcols[1], f"{_n_unique}", "Palpites únicos (só você)")
+            _mc(_mcols[2], f"{_rank}º<span style='font-size:.9rem'> / {_rn}</span>",
+                "Ranking de ousadia")
+ 
+            # Você vs média do bolão
+            _my_conf  = stats["conformity"].get(bnm, 0.0)
+            _avg_conf = (sum(stats["conformity"].values()) / len(stats["conformity"])
+                         if stats["conformity"] else 0.0)
+            st.markdown(
+                '<div style="font-size:.76rem;opacity:.65;margin:10px 0 5px">'
+                'Alinhamento com a maioria (% médio do bolão que cravou o mesmo placar exato):</div>',
+                unsafe_allow_html=True)
+            st.markdown(
+                _cbar("", "<b>Você</b>", round(_my_conf*_n), _n, color="#D6B864", mark=True) +
+                _cbar("", "Média do bolão", round(_avg_conf*_n), _n, color="#7F7F7F"),
+                unsafe_allow_html=True)
+ 
+            # Pódio de ousadia (menor conformidade = mais ousado)
+            _bold = sorted(stats["conformity"].items(), key=lambda x: x[1])[:3]
+            _podium = " &nbsp; ".join(
+                f'{m_} <b>{nm_}</b> <span style="opacity:.5">({cf*100:.0f}%)</span>'
+                for (nm_, cf), m_ in zip(_bold, ["🥇","🥈","🥉"]))
+            st.markdown(
+                f'<div style="margin:10px 0;padding:8px 12px;border-radius:8px;'
+                f'background:rgba(128,128,128,.06);font-size:.82rem">'
+                f'<span style="opacity:.6;font-size:.7rem;font-weight:700;text-transform:uppercase;'
+                f'letter-spacing:.6px">🎲 Mais ousados do bolão</span><br>{_podium}</div>',
+                unsafe_allow_html=True)
+ 
+            # Listas: mais ousados / mais alinhados
+            _l1, _l2 = st.columns(2, gap="large")
+            with _l1:
+                st.markdown('<div style="font-size:.82rem;font-weight:700;margin-bottom:4px">'
+                            '🎲 Seus palpites mais ousados</div>', unsafe_allow_html=True)
+                for r in sorted(_rows, key=lambda x: x[6])[:6]:
+                    _m,_t1,_t2,_mk,_md,_mdp,_myp,_tot,_myn = r
+                    st.markdown(
+                        f'<div style="font-size:.76rem;padding:5px 0;'
+                        f'border-bottom:1px solid rgba(128,128,128,.08)">'
+                        f'{FI(_t1)}{_t1} <span style="opacity:.4">×</span> {FI(_t2)}{_t2}<br>'
+                        f'<span style="opacity:.85">você <b>{_placar(_mk)}</b> '
+                        f'<span style="color:#B2584E">({_myp*100:.0f}%)</span></span> '
+                        f'<span style="opacity:.5">· comum {_placar(_md)} ({_mdp*100:.0f}%)</span>'
+                        f'</div>', unsafe_allow_html=True)
+            with _l2:
+                st.markdown('<div style="font-size:.82rem;font-weight:700;margin-bottom:4px">'
+                            '🐑 Onde você seguiu a manada</div>', unsafe_allow_html=True)
+                for r in sorted(_rows, key=lambda x: -x[6])[:6]:
+                    _m,_t1,_t2,_mk,_md,_mdp,_myp,_tot,_myn = r
+                    st.markdown(
+                        f'<div style="font-size:.76rem;padding:5px 0;'
+                        f'border-bottom:1px solid rgba(128,128,128,.08)">'
+                        f'{FI(_t1)}{_t1} <span style="opacity:.4">×</span> {FI(_t2)}{_t2}<br>'
+                        f'<span style="opacity:.85">você <b>{_placar(_mk)}</b> '
+                        f'<span style="color:#0D8587">({_myp*100:.0f}%)</span></span>'
+                        f'</div>', unsafe_allow_html=True)
+ 
+        # ── FEATURE 2: consenso do mata-mata por fase ─────────────────
+        st.markdown('<div class="sh">🗺️ Para onde o bolão acha que cada seleção avança</div>',
+                    unsafe_allow_html=True)
+        st.caption("As seleções que mais gente cravou para avançar em cada fase. "
+                   "Suas escolhas aparecem destacadas abaixo de cada gráfico.")
+ 
+        _ROUNDS_F2 = [
+            ('R32',     '🔵', 'Avançam às Oitavas'),
+            ('Oitavas', '🟢', 'Avançam às Quartas'),
+            ('Quartas', '🟡', 'Avançam às Semis'),
+            ('Semi',    '🔴', 'Finalistas'),
+        ]
+        for _rk, _ico, _lbl in _ROUNDS_F2:
+            _slots = stats["rnd_slots"].get(_rk, 0)
+            _dist  = stats["ko_dist"].get(_rk, Counter())
+            _top   = _dist.most_common(_slots)
+            _top_set = {t for t, _ in _top}
+            _mypicks = bprnd.get(_rk, set())
+            with st.expander(f"{_ico} {_rk} — {_lbl} (top {_slots})",
+                             expanded=(_rk == 'R32')):
+                if not _top:
+                    st.markdown('<div style="opacity:.45;font-size:.82rem">Sem palpites ainda.</div>',
                                 unsafe_allow_html=True)
-
-            with col_r:
-                st.markdown(
-                    f'<div class="rnd-section-lbl">✅ Avançaram de verdade ({len(real_set)})</div>',
-                    unsafe_allow_html=True,
-                )
-                if real_set:
-                    html_r = ""
-                    for team in sorted(real_set, key=str):
-                        picked_it = team in my_picks
-                        cls_r  = "pill-hit"  if picked_it else "pill-real"
-                        ico_r  = "🎯 " if picked_it else ""
-                        html_r += f'<span class="pill {cls_r}">{ico_r}{FI(team)}{team}</span>'
-                    st.markdown(f'<div style="line-height:2">{html_r}</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown('<div style="opacity:.45;font-size:.82rem">Aguardando resultados...</div>',
+                    _bars = "".join(
+                        _cbar(FI(t), t, c, _n, mark=(t in _mypicks)) for t, c in _top)
+                    st.markdown(_bars, unsafe_allow_html=True)
+                if _mypicks:
+                    _chips = ""
+                    for t in sorted(_mypicks, key=str):
+                        _inc = t in _top_set
+                        _bg  = "rgba(13,133,135,.16)" if _inc else "rgba(178,88,78,.14)"
+                        _ic  = "✅" if _inc else "⚠️"
+                        _chips += (f'<span style="display:inline-block;background:{_bg};'
+                                   f'border-radius:14px;padding:2px 10px;margin:3px 4px 0 0;'
+                                   f'font-size:.74rem">{_ic} {FI(t)}{t}</span>')
+                    st.markdown(
+                        f'<div style="margin-top:8px;border-top:1px solid rgba(128,128,128,.12);'
+                        f'padding-top:6px"><span style="font-size:.7rem;opacity:.6;'
+                        f'font-weight:700">SEUS PALPITES (✅ no consenso · ⚠️ fora):</span><br>'
+                        f'{_chips}</div>', unsafe_allow_html=True)
+ 
+        # ── FEATURES 3/4/5: bônus — você vs o bolão (pizzas) ──────────
+        st.markdown('<div class="sh">🥧 Apostas de bônus — você vs o bolão</div>',
+                    unsafe_allow_html=True)
+ 
+        def _pie(col, title, dist, mypick, slug, flag=False):
+            with col:
+                st.markdown(f'<div style="font-weight:800;font-size:.9rem;text-align:center">'
+                            f'{title}</div>', unsafe_allow_html=True)
+                _mp = str(mypick).strip() if mypick else None
+                if _mp:
+                    _cnt = dist.get(_mp, 0)
+                    _pct = (_cnt / _n * 100) if _n else 0
+                    _fl  = F(_mp) + " " if flag else ""
+                    st.markdown(
+                        f'<div style="text-align:center;font-size:.8rem;margin:2px 0 6px">'
+                        f'Você: <b>{_fl}{_mp}</b><br>'
+                        f'<span style="color:#D6B864;font-weight:700">{_cnt} de {_n} '
+                        f'({_pct:.0f}%)</span> cravaram igual</div>',
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown('<div style="text-align:center;font-size:.8rem;opacity:.5;'
+                                'margin:2px 0 6px">Você não apostou</div>',
                                 unsafe_allow_html=True)
-
-            # Score strip
-            if started:
-                miss_str = (", ".join(f"{F(t)}{t}" for t in sorted(missed, key=str))
-                            if missed else "—")
-                unexp_str = (", ".join(f"{F(t)}{t}" for t in sorted(not_picked, key=str))
-                             if not_picked else "—")
-                st.markdown(
-                    f'<div class="score-strip">'
-                    f'<span>✅ <b style="color:#22C55E">{correct}</b> acertos</span>'
-                    f'<span>❌ <b style="color:#EF4444">{len(missed)}</b> erros</span>'
-                    f'<span style="opacity:.6">Não apostou em: {unexp_str}</span>'
-                    f'<span style="margin-left:auto;font-weight:800;color:#D6B864">{pts_earned} pts</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
+                if dist:
+                    _labels = list(dist.keys())
+                    _vals   = list(dist.values())
+                    _pull   = [0.14 if (_mp and l == _mp) else 0 for l in _labels]
+                    _fig = go.Figure(go.Pie(
+                        labels=_labels, values=_vals, pull=_pull, sort=True,
+                        textinfo='none',
+                        hovertemplate="%{label}<br>%{value} aposta(s) · %{percent}<extra></extra>",
+                        marker=dict(line=dict(color='rgba(0,0,0,.15)', width=1)),
+                    ))
+                    _fig.update_layout(height=230, margin=dict(l=4, r=4, t=4, b=4),
+                                       showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
+                    st.plotly_chart(_fig, width='stretch',
+                                    config={"displayModeBar": False}, key=f"pie_{slug}")
+                else:
+                    st.markdown('<div style="text-align:center;opacity:.4;font-size:.78rem">'
+                                'sem apostas</div>', unsafe_allow_html=True)
+ 
+        _pcols = st.columns(3, gap="medium")
+        _champ_pick = next(iter(bprnd.get('Final', set())), None)
+        _pie(_pcols[0], "⚽ Artilheiro",     stats["art_dist"],   (bbb[0] if bbb else None), "art")
+        _pie(_pcols[1], "🏅 Melhor Seleção", stats["mg_dist"],    (bbb[1] if bbb else None), "mg",   flag=True)
+        _pie(_pcols[2], "🏆 Campeã",          stats["champ_dist"], _champ_pick,               "champ",flag=True)
+ 
 
 # ══════════════════════════════════════════════════════════════════════
 # TAB 5: SIMULAÇÃO
