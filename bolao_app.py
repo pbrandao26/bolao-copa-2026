@@ -3192,19 +3192,42 @@ with T4:
                                 'margin:2px 0 6px">Você não apostou</div>',
                                 unsafe_allow_html=True)
                 if dist:
-                    _labels = list(dist.keys())
-                    _vals   = list(dist.values())
+                    _pal = ['#0D8587', '#D6B864', '#B2584E', '#123A56', '#5B8C5A', '#C9772E',
+                            '#7B5EA7', '#3A7CA5', '#E0A458', '#8B4049', '#4C9F70', '#A0572E',
+                            '#6A8EAE', '#C97B84', '#566B3F', '#9C6B30']
+                    _pairs  = sorted(dist.items(), key=lambda x: -x[1])
+                    _labels = [p[0] for p in _pairs]
+                    _vals   = [p[1] for p in _pairs]
+                    if len(_labels) <= len(_pal):
+                        _colors = _pal[:len(_labels)]
+                    else:
+                        _colors = [f"hsl({(i * 137.508) % 360:.0f},62%,{45 if i % 2 == 0 else 60}%)"
+                                   for i in range(len(_labels))]
                     _pull   = [0.14 if (_mp and l == _mp) else 0 for l in _labels]
                     _fig = go.Figure(go.Pie(
-                        labels=_labels, values=_vals, pull=_pull, sort=True,
+                        labels=_labels, values=_vals, pull=_pull, sort=False,
                         textinfo='none',
                         hovertemplate="%{label}<br>%{value} aposta(s) · %{percent}<extra></extra>",
-                        marker=dict(line=dict(color='rgba(0,0,0,.15)', width=1)),
+                        marker=dict(colors=_colors, line=dict(color='rgba(0,0,0,.15)', width=1)),
                     ))
                     _fig.update_layout(height=230, margin=dict(l=4, r=4, t=4, b=4),
                                        showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
                     st.plotly_chart(_fig, width='stretch',
                                     config={"displayModeBar": False}, key=f"pie_{slug}")
+                    _leg = ('<div style="display:flex;flex-wrap:wrap;gap:2px 10px;'
+                            'justify-content:center;margin-top:2px">')
+                    for _lb, _vv, _cc in zip(_labels, _vals, _colors):
+                        _pc = (_vv / _n * 100) if _n else 0
+                        _b  = 'font-weight:700;' if (_mp and _lb == _mp) else ''
+                        _fl = (F(_lb) + ' ') if flag else ''
+                        _leg += (f'<span style="display:inline-flex;align-items:center;gap:4px;'
+                                 f'font-size:.7rem;line-height:1.6;{_b}">'
+                                 f'<span style="width:9px;height:9px;border-radius:2px;flex:none;'
+                                 f'background:{_cc}"></span>{_fl}{_lb} '
+                                 f'<span style="opacity:.55">{_pc:.0f}%</span></span>')
+                    _leg += '</div>'
+                    st.markdown(_leg, unsafe_allow_html=True)
+
                 else:
                     st.markdown('<div style="text-align:center;opacity:.4;font-size:.78rem">'
                                 'sem apostas</div>', unsafe_allow_html=True)
