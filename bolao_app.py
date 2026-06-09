@@ -2696,7 +2696,7 @@ with T3:
 # ── TAB 4: POR APOSTADOR ─────────────────────────────────────────────
 with T4:
     sel = st.selectbox("👤 Apostador", [b[0] for b in bettors])
-    bnm,bgb,bbb,bxm,bsc,_ = next(b for b in bettors if b[0]==sel)
+    bnm,bgb,bbb,bxm,bsc,bprnd = next(b for b in bettors if b[0]==sel)
     pos   = next(i for i,(nm,*_) in enumerate(bettors,1) if nm==bnm)
     medal = MEDALS.get(pos, f"{pos}°")
 
