@@ -2938,7 +2938,7 @@ with T4:
             _rank, _rn = stats["conformity_rank"].get(bnm, (0, 0))
  
             _mcols = st.columns(3)
-            _mc(_mcols[0], f"{_n_main}/{len(_rows)}", "Cravou o placar + popular")
+            _mc(_mcols[0], f"{_n_main}/{len(_rows)}", "Colocou o placar + popular")
             _mc(_mcols[1], f"{_n_unique}", "Palpites únicos (só você)")
             _mc(_mcols[2], f"{_rank}º<span style='font-size:.9rem'> / {_rn}</span>",
                 "Ranking de ousadia")
@@ -2952,12 +2952,12 @@ with T4:
                 '<div style="font-size:.78rem;font-weight:700;margin:12px 0 2px">'
                 '🧭 Alinhamento com o bolão</div>'
                 '<div style="font-size:.72rem;opacity:.6;margin-bottom:6px">'
-                '% médio do bolão que cravou o <b>placar exato</b> igual ao seu, jogo a jogo. '
+                '% médio do bolão que colocou o <b>placar exato</b> igual ao seu, jogo a jogo. '
                 'Quanto maior, mais você joga "na manada".</div>',
                 unsafe_allow_html=True)
             st.markdown(
-                _vbar("<b>Você</b>", f"{_my_conf*100:.0f}%", _my_conf/_ax, "#D6B864") +
-                _vbar("Média do bolão", f"{_avg_conf*100:.0f}%", _avg_conf/_ax, "#7F7F7F"),
+                _vbar("<b>Você</b>", f'{_my_conf*100:.0f}% <span style="opacity:.5;font-weight:400">({round(_my_conf*_n)})</span>', _my_conf/_ax, "#D6B864") +
+                _vbar("Média do bolão", f'{_avg_conf*100:.0f}% <span style="opacity:.5;font-weight:400">({round(_avg_conf*_n)})</span>', _avg_conf/_ax, "#7F7F7F"),
                 unsafe_allow_html=True)
  
             # Pódio de ousadia (menor conformidade = mais ousado)
@@ -3044,7 +3044,7 @@ with T4:
  
         # ── Perfil de gols: você vs média do bolão ────────────────────
         st.markdown('<div class="sh">⚽ Seu perfil de gols</div>', unsafe_allow_html=True)
-        st.caption("Quantos gols seus palpites de grupos somam, comparado ao resto do bolão.")
+        st.caption("Quantos gols seus palpites da fase de grupos grupos somam, comparado ao resto do bolão.")
         _gt = {}
         _gc = {}
         for _b in bettors:
@@ -3093,7 +3093,7 @@ with T4:
         # ── FEATURE 2: consenso do mata-mata por fase ─────────────────
         st.markdown('<div class="sh">🗺️ Para onde o bolão acha que cada seleção avança</div>',
                     unsafe_allow_html=True)
-        st.caption("As seleções que mais gente cravou para avançar em cada fase. "
+        st.caption("As seleções que mais gente colocou para avançar em cada fase. "
                    "Suas escolhas aparecem destacadas abaixo de cada gráfico.")
  
         _ROUNDS_F2 = [
@@ -3123,8 +3123,10 @@ with T4:
                         _inc = t in _top_set
                         _bg  = "rgba(13,133,135,.16)" if _inc else "rgba(178,88,78,.14)"
                         _ic  = "✅" if _inc else "⚠️"
-                        _chips += (f'<span style="display:inline-block;background:{_bg};'
-                                   f'border-radius:14px;padding:2px 10px;margin:3px 4px 0 0;'
+                        _pt = (_dist.get(t, 0) / _n * 100) if _n else 0
+                        _chips += (f'<span title="{_pt:.0f}% do bolão cravou esta seleção" '
+                                   f'style="display:inline-block;background:{_bg};'
+                                   f'border-radius:14px;padding:2px 10px;margin:3px 4px 0 0;cursor:help;'
                                    f'font-size:.74rem">{_ic} {FI(t)}{t}</span>')
                     st.markdown(
                         f'<div style="margin-top:8px;border-top:1px solid rgba(128,128,128,.12);'
@@ -3149,7 +3151,7 @@ with T4:
                         f'<div style="text-align:center;font-size:.8rem;margin:2px 0 6px">'
                         f'Você: <b>{_fl}{_mp}</b><br>'
                         f'<span style="color:#D6B864;font-weight:700">{_cnt} de {_n} '
-                        f'({_pct:.0f}%)</span> cravaram igual</div>',
+                        f'({_pct:.0f}%)</span> colocaram igual</div>',
                         unsafe_allow_html=True)
                 else:
                     st.markdown('<div style="text-align:center;font-size:.8rem;opacity:.5;'
