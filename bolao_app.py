@@ -2885,6 +2885,30 @@ with T4:
  
         def _placar(t): return f"{t[0]}×{t[1]}"
  
+        def _vbar(label, valstr, frac, color):
+            w = max(3.0, min(100.0, frac * 100))
+            return (
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+                f'<div style="width:150px;font-size:.78rem">{label}</div>'
+                f'<div style="flex:1;background:rgba(128,128,128,.12);border-radius:5px;height:20px">'
+                f'<div style="width:{w:.0f}%;background:{color};height:100%;border-radius:5px"></div></div>'
+                f'<div style="width:74px;text-align:right;font-weight:700;font-size:.82rem">{valstr}</div>'
+                f'</div>')
+ 
+        def _sent(p):
+            return 0 if p[0] == p[1] else (1 if p[0] > p[1] else -1)
+ 
+        def _classify(my, cons):
+            # classifica a divergência do SEU palpite vs o consenso (mais comum)
+            if my == cons:
+                return ('Igual', '🟢', '#22C55E')
+            a, b = _sent(my), _sent(cons)
+            if a == b:
+                return ('Mesmo sentido', '🟡', '#C9A227')      # mesmo resultado, placar difere
+            if a == 0 or b == 0:
+                return ('Sentido adjacente', '🟠', '#E08A3C')  # um cravou empate, o outro vitória
+            return ('Sentido oposto', '🔴', '#B2584E')          # um cravou mandante, o outro visitante
+ 
         _n = stats["n"]
  
         # ── FEATURE 1: divergência nos placares de grupos ─────────────
@@ -2919,17 +2943,21 @@ with T4:
             _mc(_mcols[2], f"{_rank}º<span style='font-size:.9rem'> / {_rn}</span>",
                 "Ranking de ousadia")
  
-            # Você vs média do bolão
+            # Você vs média do bolão (alinhamento de placar exato)
             _my_conf  = stats["conformity"].get(bnm, 0.0)
             _avg_conf = (sum(stats["conformity"].values()) / len(stats["conformity"])
                          if stats["conformity"] else 0.0)
+            _ax = max(_my_conf, _avg_conf, 0.01)
             st.markdown(
-                '<div style="font-size:.76rem;opacity:.65;margin:10px 0 5px">'
-                'Alinhamento com a maioria (% médio do bolão que cravou o mesmo placar exato):</div>',
+                '<div style="font-size:.78rem;font-weight:700;margin:12px 0 2px">'
+                '🧭 Alinhamento com o bolão</div>'
+                '<div style="font-size:.72rem;opacity:.6;margin-bottom:6px">'
+                '% médio do bolão que cravou o <b>placar exato</b> igual ao seu, jogo a jogo. '
+                'Quanto maior, mais você joga "na manada".</div>',
                 unsafe_allow_html=True)
             st.markdown(
-                _cbar("", "<b>Você</b>", round(_my_conf*_n), _n, color="#D6B864", mark=True) +
-                _cbar("", "Média do bolão", round(_avg_conf*_n), _n, color="#7F7F7F"),
+                _vbar("<b>Você</b>", f"{_my_conf*100:.0f}%", _my_conf/_ax, "#D6B864") +
+                _vbar("Média do bolão", f"{_avg_conf*100:.0f}%", _avg_conf/_ax, "#7F7F7F"),
                 unsafe_allow_html=True)
  
             # Pódio de ousadia (menor conformidade = mais ousado)
@@ -2971,6 +2999,96 @@ with T4:
                         f'<span style="opacity:.85">você <b>{_placar(_mk)}</b> '
                         f'<span style="color:#0D8587">({_myp*100:.0f}%)</span></span>'
                         f'</div>', unsafe_allow_html=True)
+ 
+ 
+            # Tabela cronológica completa: seu placar vs consenso (sentido + magnitude)
+            _cats = {'Igual': 0, 'Mesmo sentido': 0, 'Sentido adjacente': 0, 'Sentido oposto': 0}
+            for r in _rows:
+                _cats[_classify(r[3], r[4])[0]] += 1
+            st.markdown(
+                f'<div style="font-size:.78rem;font-weight:700;margin:14px 0 4px">'
+                f'📅 Jogo a jogo — seu placar vs o consenso</div>'
+                f'<div style="font-size:.74rem;margin-bottom:6px">'
+                f'🟢 <b>{_cats["Igual"]}</b> igual &nbsp;·&nbsp; '
+                f'🟡 <b>{_cats["Mesmo sentido"]}</b> mesmo sentido &nbsp;·&nbsp; '
+                f'🟠 <b>{_cats["Sentido adjacente"]}</b> adjacente &nbsp;·&nbsp; '
+                f'🔴 <b>{_cats["Sentido oposto"]}</b> oposto</div>',
+                unsafe_allow_html=True)
+            with st.expander(f"Ver todos os {len(_rows)} jogos (ordem cronológica)", expanded=False):
+                _html = ('<div style="display:flex;gap:6px;padding:3px 8px;font-size:.66rem;'
+                         'opacity:.5;font-weight:700;text-transform:uppercase;letter-spacing:.4px">'
+                         '<span style="width:42px">Data</span>'
+                         '<span style="flex:1">Jogo</span>'
+                         '<span style="width:60px;text-align:center">Você</span>'
+                         '<span style="width:90px;text-align:center">Consenso</span>'
+                         '<span style="width:150px;text-align:right">Divergência</span></div>')
+                for r in sorted(_rows, key=lambda x: (GROUP_FIXTURES[x[0]][0], x[0])):
+                    _m, _t1, _t2, _mk, _md, _mdp, _myp, _tot, _myn = r
+                    _cat, _ic, _col = _classify(_mk, _md)
+                    _dist = abs(_mk[0] - _md[0]) + abs(_mk[1] - _md[1])
+                    _dstr = "" if _cat == 'Igual' else f' <span style="opacity:.55">·Δ{_dist}</span>'
+                    _ds = GROUP_FIXTURES[_m][0].strftime("%d/%m")
+                    _html += (
+                        f'<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;'
+                        f'border-left:3px solid {_col};border-bottom:1px solid rgba(128,128,128,.06);'
+                        f'font-size:.75rem">'
+                        f'<span style="width:42px;opacity:.5">{_ds}</span>'
+                        f'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;'
+                        f'white-space:nowrap">{FI(_t1)}{_t1} <span style="opacity:.4">×</span> {FI(_t2)}{_t2}</span>'
+                        f'<span style="width:60px;text-align:center"><b>{_placar(_mk)}</b></span>'
+                        f'<span style="width:90px;text-align:center;opacity:.78">{_placar(_md)} '
+                        f'<span style="opacity:.55;font-size:.68rem">{_mdp*100:.0f}%</span></span>'
+                        f'<span style="width:150px;text-align:right;color:{_col}">{_ic} {_cat}{_dstr}</span>'
+                        f'</div>')
+                st.markdown(_html, unsafe_allow_html=True)
+ 
+        # ── Perfil de gols: você vs média do bolão ────────────────────
+        st.markdown('<div class="sh">⚽ Seu perfil de gols</div>', unsafe_allow_html=True)
+        st.caption("Quantos gols seus palpites de grupos somam, comparado ao resto do bolão.")
+        _gt = {}
+        _gc = {}
+        for _b in bettors:
+            _s = 0
+            _k = 0
+            for _p in _b[1].values():
+                try:
+                    _s += int(_p[0]) + int(_p[1])
+                    _k += 1
+                except Exception:
+                    pass
+            _gt[_b[0]] = _s
+            _gc[_b[0]] = _k
+        _my_gt = _gt.get(bnm, 0)
+        _my_gc = _gc.get(bnm, 0)
+        _my_gpg = (_my_gt / _my_gc) if _my_gc else 0.0
+        _gpgs = [(_gt[k] / _gc[k]) for k in _gt if _gc[k]]
+        _avg_gpg = (sum(_gpgs) / len(_gpgs)) if _gpgs else 0.0
+        _avg_gt = (sum(_gt.values()) / len(_gt)) if _gt else 0.0
+        _rank_g = sorted(((k, (_gt[k] / _gc[k]) if _gc[k] else 0) for k in _gt), key=lambda x: -x[1])
+        _grk = next((i + 1 for i, (k, _v) in enumerate(_rank_g) if k == bnm), 0)
+ 
+        _axg = max(_my_gpg, _avg_gpg, 0.01)
+        st.markdown('<div style="font-size:.78rem;font-weight:700;margin:4px 0 4px">Gols por jogo</div>',
+                    unsafe_allow_html=True)
+        st.markdown(
+            _vbar("<b>Você</b>", f"{_my_gpg:.2f}", _my_gpg / _axg, "#D6B864") +
+            _vbar("Média do bolão", f"{_avg_gpg:.2f}", _avg_gpg / _axg, "#7F7F7F"),
+            unsafe_allow_html=True)
+        _axt = max(_my_gt, _avg_gt, 1)
+        st.markdown('<div style="font-size:.78rem;font-weight:700;margin:10px 0 4px">Total de gols previstos</div>',
+                    unsafe_allow_html=True)
+        st.markdown(
+            _vbar("<b>Você</b>", f"{_my_gt:.0f}", _my_gt / _axt, "#0D8587") +
+            _vbar("Média do bolão", f"{_avg_gt:.0f}", _avg_gt / _axt, "#7F7F7F"),
+            unsafe_allow_html=True)
+        _vsig = "acima da" if _my_gpg > _avg_gpg else ("abaixo da" if _my_gpg < _avg_gpg else "na")
+        st.markdown(
+            f'<div style="margin-top:8px;padding:8px 12px;border-radius:8px;'
+            f'background:rgba(128,128,128,.06);font-size:.82rem">'
+            f'Você prevê <b>{_my_gpg:.2f}</b> gols/jogo — <b>{_vsig}</b> média '
+            f'(<b>{_avg_gpg:.2f}</b>). É o <b>{_grk}º</b> mais "goleador" de {len(_gt)}.</div>',
+            unsafe_allow_html=True)
+ 
  
         # ── FEATURE 2: consenso do mata-mata por fase ─────────────────
         st.markdown('<div class="sh">🗺️ Para onde o bolão acha que cada seleção avança</div>',
@@ -3015,7 +3133,7 @@ with T4:
                         f'{_chips}</div>', unsafe_allow_html=True)
  
         # ── FEATURES 3/4/5: bônus — você vs o bolão (pizzas) ──────────
-        st.markdown('<div class="sh">🥧 Apostas de bônus — você vs o bolão</div>',
+        st.markdown('<div class="sh">🥧 Apostas — você vs o bolão</div>',
                     unsafe_allow_html=True)
  
         def _pie(col, title, dist, mypick, slug, flag=False):
