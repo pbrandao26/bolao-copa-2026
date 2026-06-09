@@ -3178,7 +3178,7 @@ with T4:
         _pcols = st.columns(3, gap="medium")
         _champ_pick = next(iter(bprnd.get('Final', set())), None)
         _pie(_pcols[0], "⚽ Artilheiro",     stats["art_dist"],   (bbb[0] if bbb else None), "art")
-        _pie(_pcols[1], "🏅 Melhor Seleção", stats["mg_dist"],    (bbb[1] if bbb else None), "mg",   flag=True)
+        _pie(_pcols[1], "🏅 Melhor Seleção Fase de Grupos", stats["mg_dist"],    (bbb[1] if bbb else None), "mg",   flag=True)
         _pie(_pcols[2], "🏆 Campeã",          stats["champ_dist"], _champ_pick,               "champ",flag=True)
  
 
