@@ -3021,7 +3021,7 @@ with T4:
                          '<span style="flex:1">Jogo</span>'
                          '<span style="width:60px;text-align:center">Você</span>'
                          '<span style="width:90px;text-align:center">Consenso</span>'
-                         '<span style="width:150px;text-align:right">Divergência</span>'
+                         '<span style="width:150px;text-align:right">Divergência vs Consenso</span>'
                          '<span style="width:56px;text-align:center">Real</span>'
                          '<span style="width:48px;text-align:center">Seus Pontos</span>'
                          '<span style="width:56px;text-align:center">Média</span>'
