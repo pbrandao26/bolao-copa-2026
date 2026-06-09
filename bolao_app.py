@@ -3021,13 +3021,43 @@ with T4:
                          '<span style="flex:1">Jogo</span>'
                          '<span style="width:60px;text-align:center">Você</span>'
                          '<span style="width:90px;text-align:center">Consenso</span>'
-                         '<span style="width:150px;text-align:right">Divergência</span></div>')
+                         '<span style="width:150px;text-align:right">Divergência</span>'
+                         '<span style="width:56px;text-align:center">Real</span>'
+                         '<span style="width:48px;text-align:center">Pontuação</span>'
+                         '<span style="width:56px;text-align:center">Média</span>'
+                         '<span style="width:66px;text-align:center">Δ vs méd</span></div>')
+                
+                # média de pontos por jogo (entre quem apostou e o jogo já pontuou)
+                _pavg = {}
+                for _b in bettors:
+                    for _mm, _pv in _b[4].get('gdet', {}).items():
+                        if _pv is not None:
+                            _ac = _pavg.setdefault(_mm, [0, 0]); _ac[0] += _pv; _ac[1] += 1
+
                 for r in sorted(_rows, key=lambda x: (GROUP_FIXTURES[x[0]][0], x[0])):
                     _m, _t1, _t2, _mk, _md, _mdp, _myp, _tot, _myn = r
                     _cat, _ic, _col = _classify(_mk, _md)
                     _dist = abs(_mk[0] - _md[0]) + abs(_mk[1] - _md[1])
                     _dstr = "" if _cat == 'Igual' else f' <span style="opacity:.55">·Δ{_dist}</span>'
                     _ds = GROUP_FIXTURES[_m][0].strftime("%d/%m")
+                    _rp = gr.get(_m)
+                    _sp = bsc['gdet'].get(_m, 0)
+                    _am = (_pavg[_m][0] / _pavg[_m][1]) if _m in _pavg else None
+                    if _rp is None or _am is None:
+                        _real_s, _sua_s, _med_s = "⏳", "—", "—"
+                        _dlt_html = '<span style="opacity:.35">—</span>'
+                    else:
+                        _real_s, _sua_s, _med_s = _placar(_rp), f"{_sp}", f"{_am:.1f}"
+                        _d = _sp - _am
+                        if _d > 0:
+                            _bg = f"rgba(34,197,94,{0.12 + min(1.0, _d/5.0)*0.45:.2f})"; _dsg = f"+{_d:.1f}"
+                        elif _d < 0:
+                            _bg = f"rgba(239,68,68,{0.12 + min(1.0, -_d/5.0)*0.45:.2f})"; _dsg = f"{_d:.1f}"
+                        else:
+                            _bg = "rgba(128,128,128,.10)"; _dsg = "0"
+                        _dlt_html = (f'<span style="display:inline-block;min-width:42px;padding:1px 6px;'
+                                    f'border-radius:6px;background:{_bg};font-weight:700">{_dsg}</span>')
+
                     _html += (
                         f'<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;'
                         f'border-left:3px solid {_col};border-bottom:1px solid rgba(128,128,128,.06);'
@@ -3039,6 +3069,10 @@ with T4:
                         f'<span style="width:90px;text-align:center;opacity:.78">{_placar(_md)} '
                         f'<span style="opacity:.55;font-size:.68rem">{_mdp*100:.0f}%</span></span>'
                         f'<span style="width:150px;text-align:right;color:{_col}">{_ic} {_cat}{_dstr}</span>'
+                        f'<span style="width:56px;text-align:center;opacity:.85">{_real_s}</span>'
+                        f'<span style="width:48px;text-align:center;font-weight:700">{_sua_s}</span>'
+                        f'<span style="width:56px;text-align:center;opacity:.7">{_med_s}</span>'
+                        f'<span style="width:66px;text-align:center">{_dlt_html}</span>'
                         f'</div>')
                 st.markdown(_html, unsafe_allow_html=True)
  
