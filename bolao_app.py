@@ -3124,7 +3124,7 @@ with T4:
                         _bg  = "rgba(13,133,135,.16)" if _inc else "rgba(178,88,78,.14)"
                         _ic  = "✅" if _inc else "⚠️"
                         _pt = (_dist.get(t, 0) / _n * 100) if _n else 0
-                        _chips += (f'<span title="{_pt:.0f}% do bolão cravou esta seleção" '
+                        _chips += (f'<span title="{_pt:.0f}% do bolão colocou esta seleção" '
                                    f'style="display:inline-block;background:{_bg};'
                                    f'border-radius:14px;padding:2px 10px;margin:3px 4px 0 0;cursor:help;'
                                    f'font-size:.74rem">{_ic} {FI(t)}{t}</span>')
