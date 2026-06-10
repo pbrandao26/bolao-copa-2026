@@ -3348,7 +3348,7 @@ if MOSTRAR_SIMULACAO:
                     _cur = st.session_state["sim_gr"].get(_m)
                     _t1v = "" if _cur is None else str(_cur[0])
                     _t2v = "" if _cur is None else str(_cur[1])
-                    _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns([0.6, 2.7, 0.8, 0.8, 2.7])
+                    _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns([0.6, 2.7, 0.6, 0.6, 2.7])
                     _mc1.markdown(
                         f'<div style="font-size:.65rem;opacity:.5;padding-top:7px;text-align:right">{_ds}</div>',
                         unsafe_allow_html=True)
