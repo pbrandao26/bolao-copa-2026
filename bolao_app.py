@@ -3290,8 +3290,13 @@ if MOSTRAR_SIMULACAO:
 
         _sim_mmr_cur = dict(mmr)
         for _m, _ch in st.session_state["sim_mm"].items():
-            if _m not in mmr:
-                _sim_mmr_cur[_m] = (1, 0, None) if _ch == 't1' else (0, 1, None)
+            if _m in mmr:
+                continue
+
+            if _ch == "t1":
+                _sim_mmr_cur[_m] = (1, 0, None)
+            elif _ch == "t2":
+                _sim_mmr_cur[_m] = (0, 1, None)
 
         _, _sim_tn = build_bracket(_sim_r32r, _sim_mmr_cur)
 
@@ -3313,6 +3318,45 @@ if MOSTRAR_SIMULACAO:
         _octR = [18, 19, 22, 23]
         _qfR  = [26, 27]
         _sfR  = [29]
+
+        _OPEN_MM = "— Em aberto —"
+
+        def _mm_key(m):
+            return f"mm_{m}_v{_rv}"
+
+        def _future_matches_to_clear(m):
+            if m in (_r32L + _r32R):
+                return list(range(16, 32))
+
+            if m in (_octL + _octR):
+                return list(range(24, 32))
+
+            if m in [24, 25, 26, 27]:
+                return [28, 29, 30, 31]
+
+            if m in [28, 29]:
+                return [30, 31]
+
+            return []
+
+        def _clear_future_choices(m):
+            for fm in _future_matches_to_clear(m):
+                st.session_state["sim_mm"].pop(fm, None)
+                st.session_state.pop(_mm_key(fm), None)
+
+        def _set_mm_choice(m, widget_key):
+            old = st.session_state["sim_mm"].get(m)
+            val = st.session_state.get(widget_key, "open")
+
+            if val == "open":
+                st.session_state["sim_mm"].pop(m, None)
+                new = None
+            else:
+                st.session_state["sim_mm"][m] = val
+                new = val
+
+            if old != new:
+                _clear_future_choices(m)
 
         # ══ GRUPOS VIEW ═══════════════════════════════════════════════
         if st.session_state["sim_view"] == "grupos":
@@ -3495,17 +3539,27 @@ if MOSTRAR_SIMULACAO:
                                     f'{KO[_m][1]}: ⏳</div>',
                                     unsafe_allow_html=True)
                             else:
-                                _ch = st.session_state["sim_mm"].get(_m)
-                                _di = 1 if _ch == 't2' else 0
-                                _chv = st.radio(
+                                _saved = st.session_state["sim_mm"].get(_m, "open")
+
+                                if _saved not in ("open", "t1", "t2"):
+                                    _saved = "open"
+
+                                _opts = ["open", "t1", "t2"]
+                                _idx = _opts.index(_saved)
+                                _wkey = _mm_key(_m)
+
+                                st.radio(
                                     f"{KO[_m][1]}",
-                                    [_t1k, _t2k],
-                                    index=_di,
-                                    key=f"mm_{_m}_v{_rv}",
+                                    options=_opts,
+                                    index=_idx,
+                                    key=_wkey,
+                                    format_func=lambda x, a=_t1k, b=_t2k: (
+                                        _OPEN_MM if x == "open" else a if x == "t1" else b
+                                    ),
+                                    on_change=_set_mm_choice,
+                                    args=(_m, _wkey),
                                     horizontal=False,
                                 )
-                                st.session_state["sim_mm"][_m] = (
-                                    't1' if _chv == _t1k else 't2')
 
         # ══ Bônus simulado ════════════════════════════════════════════
         with st.expander("🎯 Simular Bônus (Melhor Seleção & Artilheiro)", expanded=False):
@@ -3611,9 +3665,15 @@ if MOSTRAR_SIMULACAO:
                 if _m not in _mgr_c:
                     _mgr_c[_m] = _vv
             _mmmr_c = dict(mmr)
+
             for _m, _ch in st.session_state["sim_mm"].items():
-                if _m not in _mmmr_c:
-                    _mmmr_c[_m] = (1, 0, None) if _ch == 't1' else (0, 1, None)
+                if _m in _mmmr_c:
+                    continue
+
+                if _ch == "t1":
+                    _mmmr_c[_m] = (1, 0, None)
+                elif _ch == "t2":
+                    _mmmr_c[_m] = (0, 1, None)
             # Bônus simulado: sobrepõe apenas o que o usuário escolheu
             _sim_br = list(br) if br else [None, None]
             if st.session_state.get("sim_art"):
