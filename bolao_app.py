@@ -196,6 +196,9 @@ html, body, [class*="css"] {
 .pill-hit  { color: #22C55E; font-weight: 700; }
 .pill-miss { opacity: .55; }
 .pill-wait { opacity: .7; }
+            
+button[data-testid="stNumberInputStepUp"],
+button[data-testid="stNumberInputStepDown"] { display: none; }            
 </style>
 """, unsafe_allow_html=True)
 
@@ -3499,33 +3502,45 @@ if MOSTRAR_SIMULACAO:
             _bon_c1, _bon_c2 = st.columns(2)
 
             with _bon_c1:
+
                 st.markdown(
                     '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
                     'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
                     '🏅 Melhor Seleção da Fase de Grupos</div>',
                     unsafe_allow_html=True)
-                _sel_opts = ["(não simular)"] + _all_teams_sim
-                _cur_sel  = st.session_state.get("sim_sel")
-                _sel_idx  = (_sel_opts.index(_cur_sel)
-                             if _cur_sel in _sel_opts else 0)
-                _sel_choice = st.selectbox(
-                    "Melhor Seleção",
-                    options=_sel_opts,
-                    index=_sel_idx,
-                    key=f"sim_sel_box_v{_rv}",
-                    label_visibility="collapsed",
-                )
-                if _sel_choice != "(não simular)":
-                    st.session_state["sim_sel"] = _sel_choice
-                    st.markdown(
-                        f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                        f'{FI(_sel_choice)}{_sel_choice}</div>',
-                        unsafe_allow_html=True)
-                else:
+
+                if br and br[1]:
                     st.session_state["sim_sel"] = None
                     st.markdown(
-                        '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
+                        f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
+                        f'🔒 {FI(br[1])}{br[1]}</div>'
+                        f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
+                        f'definido no gabarito</div>',
                         unsafe_allow_html=True)
+                else:
+
+                    _sel_opts = ["(não simular)"] + _all_teams_sim
+                    _cur_sel  = st.session_state.get("sim_sel")
+                    _sel_idx  = (_sel_opts.index(_cur_sel)
+                                if _cur_sel in _sel_opts else 0)
+                    _sel_choice = st.selectbox(
+                        "Melhor Seleção",
+                        options=_sel_opts,
+                        index=_sel_idx,
+                        key=f"sim_sel_box_v{_rv}",
+                        label_visibility="collapsed",
+                    )
+                    if _sel_choice != "(não simular)":
+                        st.session_state["sim_sel"] = _sel_choice
+                        st.markdown(
+                            f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
+                            f'{FI(_sel_choice)}{_sel_choice}</div>',
+                            unsafe_allow_html=True)
+                    else:
+                        st.session_state["sim_sel"] = None
+                        st.markdown(
+                            '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
+                            unsafe_allow_html=True)
 
             with _bon_c2:
                 st.markdown(
@@ -3533,7 +3548,18 @@ if MOSTRAR_SIMULACAO:
                     'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
                     '⚽ Artilheiro do Torneio</div>',
                     unsafe_allow_html=True)
-                if JOGADORES_ARTILHEIRO:
+                
+                if br and br[0]:
+                    st.session_state["sim_art"] = None
+                    _alk = next((c for j, c in JOGADORES_ARTILHEIRO if j == br[0]), None)
+                    st.markdown(
+                        f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
+                        f'🔒 {FI(_alk) if _alk else ""}{br[0]}</div>'
+                        f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
+                        f'definido no gabarito</div>',
+                        unsafe_allow_html=True)
+
+                elif JOGADORES_ARTILHEIRO:
                     _art_names = [j for j, _ in JOGADORES_ARTILHEIRO]
                     _art_opts  = ["(não simular)"] + _art_names
                     _cur_art   = st.session_state.get("sim_art")
