@@ -3364,7 +3364,9 @@ if MOSTRAR_SIMULACAO:
                             f'</div>',
                             unsafe_allow_html=True)
                         continue
-                    _cur = st.session_state["sim_gr"].get(_m, (0, 0))
+                    _cur = st.session_state["sim_gr"].get(_m)
+                    _v1 = int(_cur[0]) if _cur else None
+                    _v2 = int(_cur[1]) if _cur else None
                     _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns([0.6, 3, 0.6, 0.6, 3])
                     _mc1.markdown(
                         f'<div style="font-size:.65rem;opacity:.5;padding-top:7px;text-align:right">{_ds}</div>',
@@ -3373,17 +3375,22 @@ if MOSTRAR_SIMULACAO:
                         f'<div style="font-size:.82rem;font-weight:700;text-align:right;'
                         f'padding-top:5px">{FI(_t1)}{_t1}</div>',
                         unsafe_allow_html=True)
-                    _s1 = _mc3.number_input("", 0, 20, int(_cur[0]),
+                    _s1 = _mc3.number_input("", 0, 20, value=_v1, step=1,
                                             key=f"sg_{_m}_1_v{_rv}",
-                                            label_visibility="collapsed")
-                    _s2 = _mc4.number_input("", 0, 20, int(_cur[1]),
+                                            label_visibility="collapsed",
+                                            placeholder="–")
+                    _s2 = _mc4.number_input("", 0, 20, value=_v2, step=1,
                                             key=f"sg_{_m}_2_v{_rv}",
-                                            label_visibility="collapsed")
+                                            label_visibility="collapsed",
+                                            placeholder="–")
                     _mc5.markdown(
                         f'<div style="font-size:.82rem;font-weight:700;padding-top:5px">'
                         f'{FI(_t2)}{_t2}</div>',
                         unsafe_allow_html=True)
-                    st.session_state["sim_gr"][_m] = (int(_s1), int(_s2))
+                    if _s1 is not None and _s2 is not None:
+                        st.session_state["sim_gr"][_m] = (int(_s1), int(_s2))
+                    else:
+                        st.session_state["sim_gr"].pop(_m, None)
 
         # ══ MATA-MATA VIEW ════════════════════════════════════════════
         else:
