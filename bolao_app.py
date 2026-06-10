@@ -3346,8 +3346,8 @@ if MOSTRAR_SIMULACAO:
                             unsafe_allow_html=True)
                         continue
                     _cur = st.session_state["sim_gr"].get(_m)
-                    _v1 = int(_cur[0]) if _cur else None
-                    _v2 = int(_cur[1]) if _cur else None
+                    _t1v = "" if _cur is None else str(_cur[0])
+                    _t2v = "" if _cur is None else str(_cur[1])
                     _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns([0.6, 2.7, 0.8, 0.8, 2.7])
                     _mc1.markdown(
                         f'<div style="font-size:.65rem;opacity:.5;padding-top:7px;text-align:right">{_ds}</div>',
@@ -3356,20 +3356,24 @@ if MOSTRAR_SIMULACAO:
                         f'<div style="font-size:.82rem;font-weight:700;text-align:right;'
                         f'padding-top:5px">{FI(_t1)}{_t1}</div>',
                         unsafe_allow_html=True)
-                    _s1 = _mc3.number_input("", 0, 20, value=_v1, step=1,
-                                            key=f"sg_{_m}_1_v{_rv}",
-                                            label_visibility="collapsed",
-                                            placeholder="–")
-                    _s2 = _mc4.number_input("", 0, 20, value=_v2, step=1,
-                                            key=f"sg_{_m}_2_v{_rv}",
-                                            label_visibility="collapsed",
-                                            placeholder="–")
+                    _r1 = _mc3.text_input("", value=_t1v, max_chars=2,
+                                          key=f"sg_{_m}_1_v{_rv}",
+                                          label_visibility="collapsed",
+                                          placeholder="–")
+                    _r2 = _mc4.text_input("", value=_t2v, max_chars=2,
+                                          key=f"sg_{_m}_2_v{_rv}",
+                                          label_visibility="collapsed",
+                                          placeholder="–")
                     _mc5.markdown(
                         f'<div style="font-size:.82rem;font-weight:700;padding-top:5px">'
                         f'{FI(_t2)}{_t2}</div>',
                         unsafe_allow_html=True)
+                    
+                    _x1 = (_r1 or "").strip(); _x2 = (_r2 or "").strip()
+                    _s1 = int(_x1) if (_x1.isdigit() and int(_x1) <= 20) else None
+                    _s2 = int(_x2) if (_x2.isdigit() and int(_x2) <= 20) else None
                     if _s1 is not None and _s2 is not None:
-                        st.session_state["sim_gr"][_m] = (int(_s1), int(_s2))
+                        st.session_state["sim_gr"][_m] = (_s1, _s2)
                     else:
                         st.session_state["sim_gr"].pop(_m, None)
 
