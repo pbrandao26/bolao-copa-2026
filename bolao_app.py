@@ -3321,33 +3321,11 @@ if MOSTRAR_SIMULACAO:
             _sg_games = [(m, gd, t1, t2)
                          for m, (gd, g, t1, t2) in enumerate(GROUP_FIXTURES)
                          if g == _sg_sel]
-            _live_st = sort_st(calc_st(_mgr_cur))
-            _grp_st  = _live_st.get(_sg_sel, [])
+            #_live_st = sort_st(calc_st(_mgr_cur))
+            #_grp_st  = _live_st.get(_sg_sel, [])
 
             _gc1, _gc2 = st.columns([5, 4])
-            with _gc1:
-                st.markdown(
-                    f'<div class="sh">📊 Classificação — Grupo {_sg_sel}</div>',
-                    unsafe_allow_html=True)
-                _st_h = ("<table class='gt'><thead><tr>"
-                         "<th></th><th style='text-align:left;min-width:110px'>Seleção</th>"
-                         "<th>P</th><th>J</th><th>V</th><th>E</th><th>D</th>"
-                         "<th>GP</th><th>GC</th><th>SG</th></tr></thead><tbody>")
-                _st_r = ""
-                for _pos, (_team, _td) in enumerate(_grp_st, 1):
-                    _bg  = "rgba(13,133,135,.10)" if _pos <= 2 else ""
-                    _fc  = "#22C55E" if _pos <= 2 else "#FB923C" if _pos == 3 else "inherit"
-                    _st_r += (
-                        f"<tr style='background:{_bg}'>"
-                        f"<td style='font-weight:700;color:{_fc}'>{_pos}</td>"
-                        f"<td style='text-align:left'>{FI(_team)}{_team}</td>"
-                        f"<td style='font-weight:700'>{_td['pts']}</td>"
-                        f"<td>{_td['played']}</td><td>{_td['w']}</td>"
-                        f"<td>{_td['d']}</td><td>{_td['l']}</td>"
-                        f"<td>{_td['gf']}</td><td>{_td['ga']}</td>"
-                        f"<td>{_td['gf']-_td['ga']:+d}</td></tr>")
-                st.markdown(f"{_st_h}{_st_r}</tbody></table>",
-                            unsafe_allow_html=True)
+
 
             with _gc2:
                 st.markdown(
@@ -3394,6 +3372,35 @@ if MOSTRAR_SIMULACAO:
                         st.session_state["sim_gr"][_m] = (int(_s1), int(_s2))
                     else:
                         st.session_state["sim_gr"].pop(_m, None)
+
+            _mgr_now = {**st.session_state["sim_gr"]}
+            for _m, _v in gr.items():
+                _mgr_now[_m] = _v
+            _grp_st = sort_st(calc_st(_mgr_now)).get(_sg_sel, [])
+
+            with _gc1:
+                st.markdown(
+                    f'<div class="sh">📊 Classificação — Grupo {_sg_sel}</div>',
+                    unsafe_allow_html=True)
+                _st_h = ("<table class='gt'><thead><tr>"
+                         "<th></th><th style='text-align:left;min-width:110px'>Seleção</th>"
+                         "<th>P</th><th>J</th><th>V</th><th>E</th><th>D</th>"
+                         "<th>GP</th><th>GC</th><th>SG</th></tr></thead><tbody>")
+                _st_r = ""
+                for _pos, (_team, _td) in enumerate(_grp_st, 1):
+                    _bg  = "rgba(13,133,135,.10)" if _pos <= 2 else ""
+                    _fc  = "#22C55E" if _pos <= 2 else "#FB923C" if _pos == 3 else "inherit"
+                    _st_r += (
+                        f"<tr style='background:{_bg}'>"
+                        f"<td style='font-weight:700;color:{_fc}'>{_pos}</td>"
+                        f"<td style='text-align:left'>{FI(_team)}{_team}</td>"
+                        f"<td style='font-weight:700'>{_td['pts']}</td>"
+                        f"<td>{_td['played']}</td><td>{_td['w']}</td>"
+                        f"<td>{_td['d']}</td><td>{_td['l']}</td>"
+                        f"<td>{_td['gf']}</td><td>{_td['ga']}</td>"
+                        f"<td>{_td['gf']-_td['ga']:+d}</td></tr>")
+                st.markdown(f"{_st_h}{_st_r}</tbody></table>",
+                            unsafe_allow_html=True)
 
         # ══ MATA-MATA VIEW ════════════════════════════════════════════
         else:
