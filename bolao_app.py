@@ -3268,7 +3268,7 @@ if MOSTRAR_SIMULACAO:
                          key="sim_btn_mm"):
                 st.session_state["sim_view"] = "mata-mata"; st.rerun()
         with _tv3:
-            if st.button("🗑", width='stretch', key="sim_btn_clr"):
+            if st.button("🗑 Apagar Simulação", width='stretch', key="sim_btn_clr"):
                 st.session_state["sim_rv"]  += 1
                 st.session_state["sim_gr"]   = {}
                 st.session_state["sim_mm"]   = {}
