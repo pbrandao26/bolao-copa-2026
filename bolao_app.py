@@ -1323,19 +1323,19 @@ GRP_COLORS={
     'E':'#B2584E','F':'#8B3D35','G':'#DC884A','H':'#a86028',
     'I':'#D6B864','J':'#b89640','K':'#0D2B40','L':'#123A56',
 }
-FIFA_RANKINGS={
-    'Mexico':16,'Africa do Sul':63,'Coreia do Sul':23,'Tchequia':38,
-    'Canada':44,'Bosnia e Herzegovina':55,'Qatar':38,'Suica':20,
-    'Brasil':5,'Marrocos':14,'Haiti':86,'Escocia':27,
-    'Estados Unidos':11,'Paraguai':51,'Australia':23,'Turquia':36,
-    'Alemanha':12,'Curacao':83,'Costa do Marfim':41,'Equador':39,
-    'Holanda':8,'Japao':15,'Suecia':26,'Tunisia':30,
-    'Belgica':3,'Egito':36,'Ira':25,'Nova Zelandia':98,
-    'Espanha':4,'Cabo Verde':88,'Arabia Saudita':57,'Uruguai':17,
-    'Franca':2,'Senegal':21,'Iraque':65,'Noruega':28,
-    'Argentina':1,'Argelia':32,'Austria':24,'Jordania':86,
-    'Portugal':6,'RD Congo':57,'Uzbequistao':74,'Colombia':18,
-    'Inglaterra':9,'Croacia':10,'Gana':52,'Panama':72,
+FIFA_RANKINGS = {
+    'Mexico': 14, 'Africa do Sul': 60, 'Coreia do Sul': 25, 'Tchequia': 40,
+    'Canada': 30, 'Bosnia e Herzegovina': 64, 'Qatar': 56, 'Suica': 19,
+    'Brasil': 6, 'Marrocos': 7, 'Haiti': 83, 'Escocia': 42,
+    'Estados Unidos': 17, 'Paraguai': 41, 'Australia': 27, 'Turquia': 22,
+    'Alemanha': 10, 'Curacao': 82, 'Costa do Marfim': 33, 'Equador': 23,
+    'Holanda': 8, 'Japao': 18, 'Suecia': 38, 'Tunisia': 45,
+    'Belgica': 9, 'Egito': 29, 'Ira': 20, 'Nova Zelandia': 85,
+    'Espanha': 2, 'Cabo Verde': 67, 'Arabia Saudita': 61, 'Uruguai': 16,
+    'Franca': 3, 'Senegal': 15, 'Iraque': 57, 'Noruega': 31,
+    'Argentina': 1, 'Argelia': 28, 'Austria': 24, 'Jordania': 63,
+    'Portugal': 5, 'RD Congo': 46, 'Uzbequistao': 50, 'Colombia': 13,
+    'Inglaterra': 4, 'Croacia': 11, 'Gana': 73, 'Panama': 34,
 }
 GROUPS_DATA=OrderedDict([
     ('A',['Mexico','Africa do Sul','Coreia do Sul','Tchequia']),
