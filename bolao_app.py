@@ -1416,10 +1416,11 @@ RND_ICO={'R32':'🔵','Oitavas':'🟢','Quartas':'🟡','Semi':'🔴','3o Lugar'
 
 # constantes globais, ou logo antes da função compute_mc.
 MC_N_SIMS   = 20000          # nº de simulações
-MC_W_FIFA   = 0.45           # peso do ranking FIFA
-MC_W_FORMA  = 0.20           # peso da forma na fase de grupos
+MC_W_FIFA   = 0.5           # peso do ranking FIFA
+MC_W_FORMA  = 0.25          # peso da forma na fase de grupos
 MC_W_CROWD  = 0.20           # peso da "torcida" dos apostadores
-MC_K        = 0.90           # inclinação da logística (quão decisiva é a força)
+MC_K        = 0.9           # inclinação da logística (quão decisiva é a força)
+MC_SLOPE    = 1.00
 MC_CLAMP    = 0.07           # piso/teto de probabilidade por jogo (zebra sempre possível)
 MC_WIN_BONUS, MC_QUAL_COEF = 0.22, 0.60   # momentum: bônus por vitória e peso da qualidade do adversário
 MC_KO_W = {'R32': 1.0, 'Oitavas': 1.25, 'Quartas': 1.6, 'Semi': 2.0, 'Final': 2.4}
@@ -1857,21 +1858,24 @@ def compute_mc(fingerprint, _bettors, n_sims=MC_N_SIMS, seed=42):
     zf = _z({t: -math.log(FIFA_RANKINGS.get(t, 150)) for t in teams})
     zg = _z(form_raw)
     zc = _z(crowd)
-    S_base = {t: MC_W_FIFA * zf[t] + MC_W_FORMA * zg[t] + MC_W_CROWD * zc[t] for t in teams}
+    S_base = _z({t: MC_W_FIFA * zf[t] + MC_W_FORMA * zg[t] + MC_W_CROWD * zc[t] for t in teams})
  
-    S = dict(S_base)
-    for _m in mmr:
-        wn = w_real.get(_m)
-        if not wn:
-            continue
-        t1, t2 = tn_real.get(_m, (None, None))
-        ls = t2 if wn == t1 else t1
-        if ls in S_base and wn in S_base:
-            S[wn] += MC_WIN_BONUS * MC_KO_W[_MC_KOR_RND[_m]] * (1 + MC_QUAL_COEF * max(0.0, S_base[ls]))
- 
-    def _wp(a, b):
-        p = 1.0 / (1.0 + math.exp(-MC_K * (S.get(a, 0.0) - S.get(b, 0.0))))
+    # Boost CONSISTENTE: toda vitória (real OU simulada) dá boost ao vencedor nas
+    # rodadas seguintes, escalado pela força-base do adversário batido. Assim, time
+    # que passou de verdade e time que passou na simulação chegam à rodada seguinte
+    # em pé de igualdade (corrige a assimetria do estado misto). É aplicado dentro
+    # do laço, por simulação, no dicionário `bo`.
+    def _wp(a, b, bo):
+        d = (S_base.get(a, 0.0) + bo.get(a, 0.0)) - (S_base.get(b, 0.0) + bo.get(b, 0.0))
+        p = 1.0 / (1.0 + math.exp(-MC_SLOPE * d))
         return min(1 - MC_CLAMP, max(MC_CLAMP, p))
+ 
+    def _resolve(m, t1, t2, rnd, bo):
+        w = locked[m] if m in locked else (t1 if rr.random() < _wp(t1, t2, bo) else t2)
+        if m < 30:                       # vencedor ainda terá próxima rodada -> ganha boost
+            l = t2 if w == t1 else t1
+            bo[w] = bo.get(w, 0.0) + MC_WIN_BONUS * MC_KO_W[rnd] * (1 + MC_QUAL_COEF * max(0.0, S_base.get(l, 0.0)))
+        return w
  
     locked = {m: w_real[m] for m in range(32) if m in mmr and w_real.get(m)}
  
@@ -1891,25 +1895,25 @@ def compute_mc(fingerprint, _bettors, n_sims=MC_N_SIMS, seed=42):
     third = {}
     mw = {m: {} for m in range(32)}
     for s in range(n_sims):
-        win = {}; pair = {}
+        win = {}; pair = {}; bo = {}
         for m in range(16):
             t1, t2 = r32[m]; pair[m] = (t1, t2)
-            win[m] = locked[m] if m in locked else (t1 if rr.random() < _wp(t1, t2) else t2)
+            win[m] = _resolve(m, t1, t2, 'R32', bo)
         for i, (a, b) in enumerate(_MC_OCT):
             m = 16 + i; t1, t2 = win[a], win[b]; pair[m] = (t1, t2)
-            win[m] = locked[m] if m in locked else (t1 if rr.random() < _wp(t1, t2) else t2)
+            win[m] = _resolve(m, t1, t2, 'Oitavas', bo)
         for i, (a, b) in enumerate(_MC_QF):
             m = 24 + i; t1, t2 = win[a], win[b]; pair[m] = (t1, t2)
-            win[m] = locked[m] if m in locked else (t1 if rr.random() < _wp(t1, t2) else t2)
+            win[m] = _resolve(m, t1, t2, 'Quartas', bo)
         for i, (a, b) in enumerate(_MC_SF):
             m = 28 + i; t1, t2 = win[a], win[b]; pair[m] = (t1, t2)
-            win[m] = locked[m] if m in locked else (t1 if rr.random() < _wp(t1, t2) else t2)
+            win[m] = _resolve(m, t1, t2, 'Semi', bo)
         l28 = pair[28][0] if win[28] == pair[28][1] else pair[28][1]
         l29 = pair[29][0] if win[29] == pair[29][1] else pair[29][1]
         pair[30] = (l28, l29)
-        win[30] = locked[30] if 30 in locked else (l28 if rr.random() < _wp(l28, l29) else l29)
+        win[30] = _resolve(30, l28, l29, 'Final', bo)
         t1, t2 = win[28], win[29]; pair[31] = (t1, t2)
-        win[31] = locked[31] if 31 in locked else (t1 if rr.random() < _wp(t1, t2) else t2)
+        win[31] = _resolve(31, t1, t2, 'Final', bo)
  
         adv = {'R32': [win[m] for m in range(16)],
                'Oitavas': [win[m] for m in range(16, 24)],
@@ -1958,7 +1962,7 @@ def compute_mc(fingerprint, _bettors, n_sims=MC_N_SIMS, seed=42):
             break
  
     return dict(
-        n=n_sims, teams=teams, S=S, r32=r32, locked=locked, w_real=w_real, tn_real=tn_real,
+        n=n_sims, teams=teams, S=S_base, r32=r32, locked=locked, w_real=w_real, tn_real=tn_real,
         champ=champ, finalist=finalist, reach=reach, third=third, mw=mw,
         names=[b[0] for b in _bettors],
         win_pct=(win_count / n_sims), podium_pct=(podium / n_sims),
