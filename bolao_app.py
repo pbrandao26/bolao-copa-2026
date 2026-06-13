@@ -1801,8 +1801,25 @@ def load_all_data(gab_path, parts_tuple):
     bettors.sort(key=ranking_bettor_key)
     return t495, gr, mmr, br, bettors
 
-@st.cache_resource(show_spinner=False)
-def compute_mc(fingerprint, _bettors, n_sims=MC_N_SIMS, seed=42):
+def _mc_bucket_weights(a, b, c, step=0.05):
+    """Normaliza 3 pesos para somar 1 e os arredonda numa grade (5% por padrão)
+    somando exatamente 1 — assim o cache do Monte Carlo não fragmenta (pesos
+    parecidos caem na mesma entrada). Devolve (wFIFA, wForma, wTorcida)."""
+    tot = (a or 0) + (b or 0) + (c or 0)
+    if tot <= 0:
+        return (round(1.0/3, 4),) * 3
+    raw = [a / tot, b / tot, c / tot]
+    n = int(round(1.0 / step))                 # nº de unidades (20 para passo de 5%)
+    units = [x * n for x in raw]
+    fl = [int(u) for u in units]
+    rem = n - sum(fl)
+    for i in sorted(range(3), key=lambda i: units[i] - fl[i], reverse=True)[:rem]:
+        fl[i] += 1
+    return tuple(round(u / n, 4) for u in fl)
+ 
+ 
+@st.cache_resource(show_spinner=False, max_entries=64)
+def compute_mc(fingerprint, _bettors, w_fifa=MC_W_FIFA, w_forma=MC_W_FORMA, w_crowd=MC_W_CROWD, n_sims=MC_N_SIMS, seed=42):
     """Monte Carlo do mata-mata. Cacheado por fingerprint (recomputa quando
     os dados mudam). Respeita o gabarito: R32 vem do build_r32 real e jogos já
     disputados (mmr) ficam travados; só os jogos que faltam são sorteados."""
@@ -1858,7 +1875,7 @@ def compute_mc(fingerprint, _bettors, n_sims=MC_N_SIMS, seed=42):
     zf = _z({t: -math.log(FIFA_RANKINGS.get(t, 150)) for t in teams})
     zg = _z(form_raw)
     zc = _z(crowd)
-    S_base = _z({t: MC_W_FIFA * zf[t] + MC_W_FORMA * zg[t] + MC_W_CROWD * zc[t] for t in teams})
+    S_base = _z({t: w_fifa * zf[t] + w_forma * zg[t] + w_crowd * zc[t] for t in teams})
  
     # Boost CONSISTENTE: toda vitória (real OU simulada) dá boost ao vencedor nas
     # rodadas seguintes, escalado pela força-base do adversário batido. Assim, time
@@ -1969,6 +1986,7 @@ def compute_mc(fingerprint, _bettors, n_sims=MC_N_SIMS, seed=42):
         exp_pts=mean, p10=p10, p90=p90, exp_prize=(prize / n_sims),
         mm_ok=mm_ok,
     )
+ 
  
 @st.cache_resource(show_spinner=False)
 def compute_stats(fingerprint, _bettors):
@@ -3806,17 +3824,70 @@ if MOSTRAR_SIMULACAO:
                     'gabarito. Jogos já disputados ficam travados.</div>',
                     unsafe_allow_html=True)
  
-                # ── botão Rodar / Limpar (alterna a cada clique) ──
+                # ── Pesos da equação de força (opcional) ──
+                with st.expander("⚖️ Ajustar os pesos da força (opcional)", expanded=False):
+                    st.markdown(
+                        '<div style="font-size:.8rem;line-height:1.55;opacity:.85">'
+                        '<b>Ranking FIFA</b> — o favoritismo "no papel": quão forte a seleção é no '
+                        'ranking oficial antes da Copa.<br>'
+                        '<b>Forma nos grupos</b> — como a seleção jogou na fase de grupos, ajustada pela '
+                        'força de quem enfrentou (golear um forte vale mais que golear um fraco).<br>'
+                        '<b>Torcida (palpites)</b> — em quem os apostadores do bolão apostaram para ir longe; ' \
+                        'capta o conhecimento humano que o ranking não enxerga. Os palpites de quem está melhor ' \
+                        'colocado no bolão pesam um pouco mais.</div>',
+                        unsafe_allow_html=True)
+                    _wca, _wcb, _wcc = st.columns(3)
+                    with _wca:
+                        _sf = st.slider("📊 Ranking FIFA", 0, 100, 50, 5, key="mcw_fifa")
+                    with _wcb:
+                        _sg = st.slider("📈 Forma nos grupos", 0, 100, 25, 5, key="mcw_forma")
+                    with _wcc:
+                        _sc = st.slider("👥 Torcida (palpites)", 0, 100, 25, 5, key="mcw_crowd")
+                    _eff = _mc_bucket_weights(_sf, _sg, _sc)
+                    _is_reco = (_eff == _mc_bucket_weights(50, 25, 25))
+                    _reco_badge = ('<span style="background:rgba(34,197,94,.18);'
+                                   'border:1px solid rgba(34,197,94,.5);color:#16A34A;'
+                                   'border-radius:11px;padding:1px 9px;font-size:.7rem;'
+                                   'font-weight:800;letter-spacing:.4px;margin-left:8px;'
+                                   'vertical-align:middle">✓ RECOMENDADO</span>') if _is_reco else ''
+                    st.markdown(
+                        f'<div style="font-size:.82rem;margin-top:4px">Pesos efetivos: '
+                        f'<b style="color:#8C6B1A">FIFA {_eff[0]*100:.0f}%</b> · '
+                        f'<b style="color:#8C6B1A">forma {_eff[1]*100:.0f}%</b> · '
+                        f'<b style="color:#8C6B1A">torcida {_eff[2]*100:.0f}%</b>{_reco_badge}</div>',
+                        unsafe_allow_html=True)
+                    st.caption("Os pesos devem somar 100%; se não somarem, os valores são normalizados "
+                               "para fechar a conta. O padrão (50/25/25) é o recomendado — atingiu ~75% de "
+                               "acerto nos mata-matas das Copas de 2010–2022 (medido sem o fator dos palpites).")
+ 
+                if "mc_weights" not in st.session_state:
+                    st.session_state["mc_weights"] = _mc_bucket_weights(50, 25, 25)
+                _committed = st.session_state["mc_weights"]
+                _cur_w = _mc_bucket_weights(st.session_state.get("mcw_fifa", 50),
+                                            st.session_state.get("mcw_forma", 25),
+                                            st.session_state.get("mcw_crowd", 25))
                 _mc_on = st.session_state.get("mc_run", False)
-                if st.button(("🧹 Limpar simulação" if _mc_on
-                              else f"🎲 Rodar simulação ({MC_N_SIMS:,} cenários)".replace(",", ".")),
-                             width='stretch', type="primary", key="mc_run_btn"):
-                    st.session_state["mc_run"] = not _mc_on
+                _changed = _mc_on and (_cur_w != _committed)
+ 
+                # ── botão Rodar / Limpar / Rodar de novo ──
+                if not _mc_on:
+                    _mc_lbl = f"🎲 Rodar simulação ({MC_N_SIMS:,} cenários)".replace(",", ".")
+                elif _changed:
+                    _mc_lbl = "🔄 Rodar de novo (pesos alterados)"
+                else:
+                    _mc_lbl = "🧹 Limpar simulação"
+                if st.button(_mc_lbl, width='stretch', type="primary", key="mc_run_btn"):
+                    if _mc_on and not _changed:
+                        st.session_state["mc_run"] = False
+                    else:
+                        st.session_state["mc_weights"] = _cur_w
+                        st.session_state["mc_run"] = True
                     st.rerun()
  
                 if st.session_state.get("mc_run"):
+                    _w = st.session_state["mc_weights"]
                     with st.spinner(f"Simulando {MC_N_SIMS:,} cenários…".replace(",", ".")):
-                        _R = compute_mc(_fp, bettors)
+                        _R = compute_mc(_fp, bettors, _w[0], _w[1], _w[2])
                     if not _R:
                         st.warning("Não foi possível montar o chaveamento — confira se os "
                                    "grupos estão completos.")
@@ -3826,6 +3897,8 @@ if MOSTRAR_SIMULACAO:
                                        "placar atual do app — os números podem estar levemente "
                                        "deslocados. (Me avise se aparecer.)")
  
+                        st.caption(f"Pesos usados nesta simulação: FIFA {_w[0]*100:.0f}% · "
+                                   f"forma {_w[1]*100:.0f}% · torcida {_w[2]*100:.0f}%.")
                         _BH = 470
                         def _short(t):
                             t = t or '?'
@@ -3851,7 +3924,7 @@ if MOSTRAR_SIMULACAO:
                                                   f'{FI(team)}{_short(team)} '
                                                   f'<span style="opacity:.75;font-size:.6rem">'
                                                   f'{(pct or 0)*100:.0f}%</span></div>')
-                                    else:                  # o outro time, mais apagado (como antes)
+                                    else:                  # o outro time, mais apagado
                                         op = 0.35 + 0.6 * (pct or 0)
                                         inner += (f'<div style="font-size:.66rem;white-space:nowrap;'
                                                   f'padding:1px 3px;opacity:{op:.2f}">'
@@ -3961,173 +4034,6 @@ if MOSTRAR_SIMULACAO:
                             _rc[5].markdown(f'<div style="font-size:.8rem;font-weight:700">'
                                             f'R$ {_R["exp_prize"][_bi]:,.0f}</div>'.replace(",", "."),
                                             unsafe_allow_html=True)
-
-        if st.session_state["sim_view"] != "montecarlo":
-        # ══ Bônus simulado ════════════════════════════════════════════
-            with st.expander("🎯 Simular Bônus (Melhor Seleção & Artilheiro)", expanded=False):
-                _all_teams_sim = sorted({t for g_data in GROUPS_DATA.values() for t in g_data})
-                _bon_c1, _bon_c2 = st.columns(2)
-
-                with _bon_c1:
-
-                    st.markdown(
-                        '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
-                        'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
-                        '🏅 Melhor Seleção da Fase de Grupos</div>',
-                        unsafe_allow_html=True)
-
-                    if br and br[1]:
-                        st.session_state["sim_sel"] = None
-                        st.markdown(
-                            f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                            f'🔒 {FI(br[1])}{br[1]}</div>'
-                            f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
-                            f'definido no gabarito</div>',
-                            unsafe_allow_html=True)
-                    else:
-
-                        _sel_opts = ["(não simular)"] + _all_teams_sim
-                        _cur_sel  = st.session_state.get("sim_sel")
-                        _sel_idx  = (_sel_opts.index(_cur_sel)
-                                    if _cur_sel in _sel_opts else 0)
-                        _sel_choice = st.selectbox(
-                            "Melhor Seleção",
-                            options=_sel_opts,
-                            index=_sel_idx,
-                            key=f"sim_sel_box_v{_rv}",
-                            label_visibility="collapsed",
-                        )
-                        if _sel_choice != "(não simular)":
-                            st.session_state["sim_sel"] = _sel_choice
-                            st.markdown(
-                                f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                                f'{FI(_sel_choice)}{_sel_choice}</div>',
-                                unsafe_allow_html=True)
-                        else:
-                            st.session_state["sim_sel"] = None
-                            st.markdown(
-                                '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
-                                unsafe_allow_html=True)
-
-                with _bon_c2:
-                    st.markdown(
-                        '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
-                        'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
-                        '⚽ Artilheiro do Torneio</div>',
-                        unsafe_allow_html=True)
-                    
-                    if br and br[0]:
-                        st.session_state["sim_art"] = None
-                        _alk = next((c for j, c in JOGADORES_ARTILHEIRO if j == br[0]), None)
-                        st.markdown(
-                            f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                            f'🔒 {FI(_alk) if _alk else ""}{br[0]}</div>'
-                            f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
-                            f'definido no gabarito</div>',
-                            unsafe_allow_html=True)
-
-                    elif JOGADORES_ARTILHEIRO:
-                        _art_names = [j for j, _ in JOGADORES_ARTILHEIRO]
-                        _art_opts  = ["(não simular)"] + _art_names
-                        _cur_art   = st.session_state.get("sim_art")
-                        _art_idx   = (_art_opts.index(_cur_art)
-                                    if _cur_art in _art_opts else 0)
-                        _art_choice = st.selectbox(
-                            "Artilheiro",
-                            options=_art_opts,
-                            index=_art_idx,
-                            key=f"sim_art_box_v{_rv}",
-                            label_visibility="collapsed",
-                        )
-                        if _art_choice != "(não simular)":
-                            st.session_state["sim_art"] = _art_choice
-                            _art_country = next(
-                                (c for j, c in JOGADORES_ARTILHEIRO if j == _art_choice), None)
-                            st.markdown(
-                                f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                                f'{FI(_art_country) if _art_country else ""}{_art_choice}</div>',
-                                unsafe_allow_html=True)
-                        else:
-                            st.session_state["sim_art"] = None
-                            st.markdown(
-                                '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
-                                unsafe_allow_html=True)
-                    else:
-                        st.markdown(
-                            '<div style="font-size:.82rem;opacity:.5;padding:4px 0">'
-                            'Lista de artilheiros ainda não configurada.<br>'
-                            'Adicione jogadores em <code>JOGADORES_ARTILHEIRO</code>.</div>',
-                            unsafe_allow_html=True)
-
-            # ══ Simular button (ambas as views) ═══════════════════════════
-            st.markdown("---")
-            if st.button("▶ Calcular Ranking Simulado", width='stretch', key="sim_calc"):
-                _mgr_c = dict(gr)
-                for _m, _vv in st.session_state["sim_gr"].items():
-                    if _m not in _mgr_c:
-                        _mgr_c[_m] = _vv
-                _mmmr_c = dict(mmr)
-
-                for _m, _ch in st.session_state["sim_mm"].items():
-                    if _m in _mmmr_c:
-                        continue
-
-                    if _ch == "t1":
-                        _mmmr_c[_m] = (1, 0, None)
-                    elif _ch == "t2":
-                        _mmmr_c[_m] = (0, 1, None)
-                # Bônus simulado: sobrepõe apenas o que o usuário escolheu
-                _sim_br = list(br) if br else [None, None]
-                if st.session_state.get("sim_art"):
-                    _sim_br[0] = st.session_state["sim_art"]
-                if st.session_state.get("sim_sel"):
-                    _sim_br[1] = st.session_state["sim_sel"]
-                _sim_br = tuple(_sim_br)
-                _sim_r = []
-                for _nm, _gb, _bb, _xm, _rsc, _ in bettors:
-                    _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495)
-                    _d2  = _sc2["total"] - _rsc["total"]
-                    _sim_r.append((_nm, _sc2["total"], _rsc["total"], _d2, _sc2))
-
-                # Ordena o ranking simulado pelos mesmos critérios oficiais
-                _sim_r.sort(key=lambda x: ranking_score_key(x[0], x[4]))
-
-                # Mantém o formato antigo que a tela já espera:
-                # nome, pontuação simulada, pontuação atual, delta
-                st.session_state["sim_res"] = [
-                    (_nm, _sp, _rp, _dlt)
-                    for _nm, _sp, _rp, _dlt, _sc2 in _sim_r
-                ]
-
-            # ══ Ranking resultado ═════════════════════════════════════════
-            if st.session_state.get("sim_res"):
-                st.markdown('<div class="sh">🏆 Ranking Simulado</div>',
-                            unsafe_allow_html=True)
-                _hc = st.columns([0.5, 4, 1.5, 1.5, 1.5])
-                for _c, _h in zip(_hc, ["#", "Participante", "Simulado", "Atual", "Δ"]):
-                    _c.markdown(
-                        f'<div style="font-size:.7rem;font-weight:700;opacity:.5;'
-                        f'text-transform:uppercase;letter-spacing:.8px">{_h}</div>',
-                        unsafe_allow_html=True)
-                for _rk, (_nm, _sp, _rp, _dlt) in enumerate(st.session_state["sim_res"], 1):
-                    _dc = "#22C55E" if _dlt > 0 else "#F87171" if _dlt < 0 else "inherit"
-                    _ds2 = f"+{_dlt}" if _dlt > 0 else str(_dlt)
-                    _rc2 = st.columns([0.5, 4, 1.5, 1.5, 1.5])
-                    _rc2[0].markdown(
-                        f'<div style="font-size:.82rem;opacity:.5">{MEDALS.get(_rk, _rk)}</div>',
-                        unsafe_allow_html=True)
-                    _rc2[1].markdown(
-                        f'<div style="font-size:.85rem;font-weight:600">{_nm}</div>',
-                        unsafe_allow_html=True)
-                    _rc2[2].markdown(
-                        f'<div style="font-size:.9rem;font-weight:900;color:#D6B864">{_sp}</div>',
-                        unsafe_allow_html=True)
-                    _rc2[3].markdown(
-                        f'<div style="font-size:.85rem;opacity:.55">{_rp}</div>',
-                        unsafe_allow_html=True)
-                    _rc2[4].markdown(
-                        f'<div style="font-size:.85rem;font-weight:700;color:{_dc}">{_ds2}</div>',
-                        unsafe_allow_html=True)
 
 # ── Footer
 st.markdown("---")
