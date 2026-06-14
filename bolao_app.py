@@ -17,6 +17,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 import numpy as np
 
+import time as _time
+_RUN_T0 = _time.perf_counter()
+try:
+    import psutil as _psutil
+    _PROC = _psutil.Process()
+except Exception:
+    _PROC = None
+
 load_dotenv()
 
 try:
@@ -2112,6 +2120,32 @@ with st.sidebar:
         st.image(MASCOTES, caption="🐂 Rumo ao Hexa! 🏆", width='stretch')
 
     st.markdown("---")
+
+    with st.expander("🩺 Diagnóstico", expanded=False):
+        if _PROC is not None:
+            _mb  = _PROC.memory_info().rss / (1024 * 1024)
+            _pct = _mb / 1024 * 100               # teto do Community Cloud ≈ 1 GB
+            _mcol = "#22C55E" if _pct < 60 else "#DC884A" if _pct < 85 else "#B2584E"
+            st.markdown(
+                f'<div style="font-size:.82rem">Memória: '
+                f'<b style="color:{_mcol}">{_mb:.0f} MB</b> '
+                f'<span style="opacity:.6">/ ~1024 MB ({_pct:.0f}%)</span></div>',
+                unsafe_allow_html=True)
+            st.progress(min(1.0, _mb / 1024))
+        else:
+            st.caption("Memória: adicione `psutil` ao requirements.txt para exibir.")
+ 
+        _last_ms = st.session_state.get("_diag_run_ms")
+        if _last_ms is not None:
+            st.markdown(
+                f'<div style="font-size:.82rem;margin-top:4px">Último carregamento '
+                f'completo: <b>{_last_ms:.0f} ms</b></div>',
+                unsafe_allow_html=True)
+ 
+        _nb = st.session_state.get("_diag_nbettors")
+        if _nb is not None:
+            st.caption(f"👥 {_nb} apostadores carregados")
+
     st.caption("Bolão Copa 2026 · Turim MFO · v5.0")
 
 # ══════════════════════════════════════════════════════════════════════
@@ -3486,7 +3520,11 @@ with T4:
 # TAB 5: SIMULAÇÃO
 # ══════════════════════════════════════════════════════════════════════
 if MOSTRAR_SIMULACAO:
-    with T5:
+    @st.fragment
+    def _render_simulacao_tab():
+        #_frag_t0 = _time.perf_counter()
+
+    #with T5:
         # ── Init state ────────────────────────────────────────────────
         for _k, _d in [("sim_rv", 0), ("sim_gr", {}), ("sim_mm", {}),
                         ("sim_res", None), ("sim_view", "grupos"),
@@ -3607,8 +3645,8 @@ if MOSTRAR_SIMULACAO:
 
         # ══ GRUPOS VIEW ═══════════════════════════════════════════════
         if st.session_state["sim_view"] == "grupos":
-            _sg_sel = st.radio("", GL, horizontal=True,
-                               label_visibility="collapsed", key="sim_grp_sel")
+            _sg_sel = st.radio("Grupo", GL, horizontal=True,
+                   label_visibility="collapsed", key="sim_grp_sel")
             _sg_games = [(m, gd, t1, t2)
                          for m, (gd, g, t1, t2) in enumerate(GROUP_FIXTURES)
                          if g == _sg_sel]
@@ -3647,14 +3685,12 @@ if MOSTRAR_SIMULACAO:
                         f'<div style="font-size:.82rem;font-weight:700;text-align:right;'
                         f'padding-top:5px">{FI(_t1)}{_t1}</div>',
                         unsafe_allow_html=True)
-                    _r1 = _mc3.text_input("", value=_t1v, max_chars=2,
-                                          key=f"sg_{_m}_1_v{_rv}",
-                                          label_visibility="collapsed",
-                                          placeholder="–")
-                    _r2 = _mc4.text_input("", value=_t2v, max_chars=2,
-                                          key=f"sg_{_m}_2_v{_rv}",
-                                          label_visibility="collapsed",
-                                          placeholder="–")
+                    _r1 = _mc3.text_input("Placar mandante", value=_t1v, max_chars=2,
+                      key=f"sg_{_m}_1_v{_rv}",
+                      label_visibility="collapsed", placeholder="–")
+                    _r2 = _mc4.text_input("Placar visitante", value=_t2v, max_chars=2,
+                      key=f"sg_{_m}_2_v{_rv}",
+                      label_visibility="collapsed", placeholder="–")
                     _mc5.markdown(
                         f'<div style="font-size:.82rem;font-weight:700;padding-top:5px">'
                         f'{FI(_t2)}{_t2}</div>',
@@ -4202,7 +4238,13 @@ if MOSTRAR_SIMULACAO:
                     _rc2[4].markdown(
                         f'<div style="font-size:.85rem;font-weight:700;color:{_dc}">{_ds2}</div>',
                         unsafe_allow_html=True)
-
+                    
+        # ── ⏱️ cronômetro: tempo de render desta aba (só o fragmento) ──
+        #_frag_ms = (_time.perf_counter() - _frag_t0) * 1000
+        #st.caption(f"⏱️ Esta aba renderizou em {_frag_ms:.0f} ms — digitar aqui "
+        #           f"re-roda só esta aba; trocar de aba recarrega o app inteiro.")
+    with T5:
+        _render_simulacao_tab()
 
 # ── Footer
 st.markdown("---")
@@ -4219,3 +4261,9 @@ with ft_cols[1]:
 with ft_cols[2]:
     if LOGO_TURIM_AZUL:
         st.image(LOGO_TURIM_AZUL, width=100)
+
+st.session_state["_diag_run_ms"] = (_time.perf_counter() - _RUN_T0) * 1000
+try:
+    st.session_state["_diag_nbettors"] = len(bettors)
+except Exception:
+    pass
