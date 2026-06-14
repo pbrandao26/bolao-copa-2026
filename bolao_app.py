@@ -228,12 +228,39 @@ LOGOS_DIR = SCRIPT_DIR / "logos"
 APOSTAS_DIR = SCRIPT_DIR / "apostas"
 GABARITO_DIR = SCRIPT_DIR / "gabarito"
 CONSOLIDADA_PATH = APOSTAS_DIR / "Bolao_Copa2026_TurimMFO - Consolidada.xlsx"
+GABARITO_SHEETS_ID = "1v3L3Qt7h4kbOBzwRAgIii7hOHuuv-9QwkHfoLHAui0Q"
 
 def find_asset(name):
     for p in [LOGOS_DIR / name, SCRIPT_DIR / name]:
         if p.exists():
             return str(p)
     return ""
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _baixar_gabarito_do_sheets():
+    """Baixa a planilha do Google como .xlsx (estrutura idêntica) e devolve o
+    caminho de um arquivo temporário nomeado pelo hash do conteúdo. Cacheado
+    por 60s → F5 dentro da janela não re-baixa; passados 60s, o próximo F5
+    re-baixa e, se a planilha mudou, o app relê automaticamente. O botão
+    'Recarregar dados' continua forçando tudo na hora."""
+    import urllib.request, tempfile, os, hashlib
+    _url = f"https://docs.google.com/spreadsheets/d/{GABARITO_SHEETS_ID}/export?format=xlsx"
+    _req = urllib.request.Request(_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(_req, timeout=20) as _r:
+        _data = _r.read()
+    # .xlsx é um zip → começa com "PK". Se não, veio HTML (planilha não pública).
+    if _data[:2] != b"PK":
+        raise RuntimeError(
+            "Não consegui baixar a planilha como .xlsx. Confira o "
+            "compartilhamento ('Qualquer pessoa com o link: Leitor') e o ID.")
+    # nome do arquivo = hash do conteúdo → muda só quando a planilha muda
+    _h = hashlib.md5(_data).hexdigest()[:12]
+    _p = os.path.join(tempfile.gettempdir(), f"gabarito_sheets_{_h}.xlsx")
+    # só escreve se ainda não existe (evita mexer no mtime de conteúdo igual)
+    if not os.path.exists(_p):
+        with open(_p, "wb") as _f:
+            _f.write(_data)
+    return _p
 
 LOGO_TURIM_BRANCA = find_asset("logo_turim_branca.png")
 LOGO_TURIM_AZUL   = find_asset("logo_turim_azul.png")
@@ -2092,7 +2119,8 @@ with st.sidebar:
         gab_path = None
     else:
         gsel = st.selectbox("📋 Gabarito", [n for n,_ in gabs])
-        gab_path = next(p for n,p in gabs if n==gsel)
+        #gab_path = next(p for n,p in gabs if n==gsel) # LOCAL
+        gab_path = _baixar_gabarito_do_sheets()    # SHEETS: descomente p/ testar
         st.success(f"✅ {gsel}")
 
     st.markdown("---")
