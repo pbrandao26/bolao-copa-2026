@@ -4035,171 +4035,173 @@ if MOSTRAR_SIMULACAO:
                                             f'R$ {_R["exp_prize"][_bi]:,.0f}</div>'.replace(",", "."),
                                             unsafe_allow_html=True)
 
-        # ══ Bônus simulado ════════════════════════════════════════════
-        with st.expander("🎯 Simular Bônus (Melhor Seleção & Artilheiro)", expanded=False):
-            _all_teams_sim = sorted({t for g_data in GROUPS_DATA.values() for t in g_data})
-            _bon_c1, _bon_c2 = st.columns(2)
+        if st.session_state["sim_view"] != "montecarlo":
 
-            with _bon_c1:
+            # ══ Bônus simulado ════════════════════════════════════════════
+            with st.expander("🎯 Simular Bônus (Melhor Seleção & Artilheiro)", expanded=False):
+                _all_teams_sim = sorted({t for g_data in GROUPS_DATA.values() for t in g_data})
+                _bon_c1, _bon_c2 = st.columns(2)
 
-                st.markdown(
-                    '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
-                    'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
-                    '🏅 Melhor Seleção da Fase de Grupos</div>',
-                    unsafe_allow_html=True)
+                with _bon_c1:
 
-                if br and br[1]:
-                    st.session_state["sim_sel"] = None
                     st.markdown(
-                        f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                        f'🔒 {FI(br[1])}{br[1]}</div>'
-                        f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
-                        f'definido no gabarito</div>',
+                        '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
+                        'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
+                        '🏅 Melhor Seleção da Fase de Grupos</div>',
                         unsafe_allow_html=True)
-                else:
 
-                    _sel_opts = ["(não simular)"] + _all_teams_sim
-                    _cur_sel  = st.session_state.get("sim_sel")
-                    _sel_idx  = (_sel_opts.index(_cur_sel)
-                                if _cur_sel in _sel_opts else 0)
-                    _sel_choice = st.selectbox(
-                        "Melhor Seleção",
-                        options=_sel_opts,
-                        index=_sel_idx,
-                        key=f"sim_sel_box_v{_rv}",
-                        label_visibility="collapsed",
-                    )
-                    if _sel_choice != "(não simular)":
-                        st.session_state["sim_sel"] = _sel_choice
-                        st.markdown(
-                            f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                            f'{FI(_sel_choice)}{_sel_choice}</div>',
-                            unsafe_allow_html=True)
-                    else:
+                    if br and br[1]:
                         st.session_state["sim_sel"] = None
                         st.markdown(
-                            '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
-                            unsafe_allow_html=True)
-
-            with _bon_c2:
-                st.markdown(
-                    '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
-                    'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
-                    '⚽ Artilheiro do Torneio</div>',
-                    unsafe_allow_html=True)
-
-                if br and br[0]:
-                    st.session_state["sim_art"] = None
-                    _alk = next((c for j, c in JOGADORES_ARTILHEIRO if j == br[0]), None)
-                    st.markdown(
-                        f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                        f'🔒 {FI(_alk) if _alk else ""}{br[0]}</div>'
-                        f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
-                        f'definido no gabarito</div>',
-                        unsafe_allow_html=True)
-
-                elif JOGADORES_ARTILHEIRO:
-                    _art_names = [j for j, _ in JOGADORES_ARTILHEIRO]
-                    _art_opts  = ["(não simular)"] + _art_names
-                    _cur_art   = st.session_state.get("sim_art")
-                    _art_idx   = (_art_opts.index(_cur_art)
-                                if _cur_art in _art_opts else 0)
-                    _art_choice = st.selectbox(
-                        "Artilheiro",
-                        options=_art_opts,
-                        index=_art_idx,
-                        key=f"sim_art_box_v{_rv}",
-                        label_visibility="collapsed",
-                    )
-                    if _art_choice != "(não simular)":
-                        st.session_state["sim_art"] = _art_choice
-                        _art_country = next(
-                            (c for j, c in JOGADORES_ARTILHEIRO if j == _art_choice), None)
-                        st.markdown(
                             f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
-                            f'{FI(_art_country) if _art_country else ""}{_art_choice}</div>',
+                            f'🔒 {FI(br[1])}{br[1]}</div>'
+                            f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
+                            f'definido no gabarito</div>',
                             unsafe_allow_html=True)
                     else:
-                        st.session_state["sim_art"] = None
-                        st.markdown(
-                            '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
-                            unsafe_allow_html=True)
-                else:
+
+                        _sel_opts = ["(não simular)"] + _all_teams_sim
+                        _cur_sel  = st.session_state.get("sim_sel")
+                        _sel_idx  = (_sel_opts.index(_cur_sel)
+                                    if _cur_sel in _sel_opts else 0)
+                        _sel_choice = st.selectbox(
+                            "Melhor Seleção",
+                            options=_sel_opts,
+                            index=_sel_idx,
+                            key=f"sim_sel_box_v{_rv}",
+                            label_visibility="collapsed",
+                        )
+                        if _sel_choice != "(não simular)":
+                            st.session_state["sim_sel"] = _sel_choice
+                            st.markdown(
+                                f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
+                                f'{FI(_sel_choice)}{_sel_choice}</div>',
+                                unsafe_allow_html=True)
+                        else:
+                            st.session_state["sim_sel"] = None
+                            st.markdown(
+                                '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
+                                unsafe_allow_html=True)
+
+                with _bon_c2:
                     st.markdown(
-                        '<div style="font-size:.82rem;opacity:.5;padding:4px 0">'
-                        'Lista de artilheiros ainda não configurada.<br>'
-                        'Adicione jogadores em <code>JOGADORES_ARTILHEIRO</code>.</div>',
+                        '<div style="font-size:.8rem;font-weight:700;opacity:.6;'
+                        'text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">'
+                        '⚽ Artilheiro do Torneio</div>',
                         unsafe_allow_html=True)
 
-        # ══ Simular button (ambas as views) ═══════════════════════════
-        st.markdown("---")
-        if st.button("▶ Calcular Ranking Simulado", width='stretch', key="sim_calc"):
-            _mgr_c = dict(gr)
-            for _m, _vv in st.session_state["sim_gr"].items():
-                if _m not in _mgr_c:
-                    _mgr_c[_m] = _vv
-            _mmmr_c = dict(mmr)
+                    if br and br[0]:
+                        st.session_state["sim_art"] = None
+                        _alk = next((c for j, c in JOGADORES_ARTILHEIRO if j == br[0]), None)
+                        st.markdown(
+                            f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
+                            f'🔒 {FI(_alk) if _alk else ""}{br[0]}</div>'
+                            f'<div style="font-size:.7rem;opacity:.45;margin-top:2px">'
+                            f'definido no gabarito</div>',
+                            unsafe_allow_html=True)
 
-            for _m, _ch in st.session_state["sim_mm"].items():
-                if _m in _mmmr_c:
-                    continue
+                    elif JOGADORES_ARTILHEIRO:
+                        _art_names = [j for j, _ in JOGADORES_ARTILHEIRO]
+                        _art_opts  = ["(não simular)"] + _art_names
+                        _cur_art   = st.session_state.get("sim_art")
+                        _art_idx   = (_art_opts.index(_cur_art)
+                                    if _cur_art in _art_opts else 0)
+                        _art_choice = st.selectbox(
+                            "Artilheiro",
+                            options=_art_opts,
+                            index=_art_idx,
+                            key=f"sim_art_box_v{_rv}",
+                            label_visibility="collapsed",
+                        )
+                        if _art_choice != "(não simular)":
+                            st.session_state["sim_art"] = _art_choice
+                            _art_country = next(
+                                (c for j, c in JOGADORES_ARTILHEIRO if j == _art_choice), None)
+                            st.markdown(
+                                f'<div style="margin-top:6px;font-size:.9rem;font-weight:600">'
+                                f'{FI(_art_country) if _art_country else ""}{_art_choice}</div>',
+                                unsafe_allow_html=True)
+                        else:
+                            st.session_state["sim_art"] = None
+                            st.markdown(
+                                '<div style="margin-top:6px;font-size:.8rem;opacity:.4">—</div>',
+                                unsafe_allow_html=True)
+                    else:
+                        st.markdown(
+                            '<div style="font-size:.82rem;opacity:.5;padding:4px 0">'
+                            'Lista de artilheiros ainda não configurada.<br>'
+                            'Adicione jogadores em <code>JOGADORES_ARTILHEIRO</code>.</div>',
+                            unsafe_allow_html=True)
 
-                if _ch == "t1":
-                    _mmmr_c[_m] = (1, 0, None)
-                elif _ch == "t2":
-                    _mmmr_c[_m] = (0, 1, None)
-            # Bônus simulado: sobrepõe apenas o que o usuário escolheu
-            _sim_br = list(br) if br else [None, None]
-            if st.session_state.get("sim_art"):
-                _sim_br[0] = st.session_state["sim_art"]
-            if st.session_state.get("sim_sel"):
-                _sim_br[1] = st.session_state["sim_sel"]
-            _sim_br = tuple(_sim_br)
-            _sim_r = []
-            for _nm, _gb, _bb, _xm, _rsc, _ in bettors:
-                _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495)
-                _d2  = _sc2["total"] - _rsc["total"]
-                _sim_r.append((_nm, _sc2["total"], _rsc["total"], _d2, _sc2))
+            # ══ Simular button (ambas as views) ═══════════════════════════
+            st.markdown("---")
+            if st.button("▶ Calcular Ranking Simulado", width='stretch', key="sim_calc"):
+                _mgr_c = dict(gr)
+                for _m, _vv in st.session_state["sim_gr"].items():
+                    if _m not in _mgr_c:
+                        _mgr_c[_m] = _vv
+                _mmmr_c = dict(mmr)
 
-            # Ordena o ranking simulado pelos mesmos critérios oficiais
-            _sim_r.sort(key=lambda x: ranking_score_key(x[0], x[4]))
+                for _m, _ch in st.session_state["sim_mm"].items():
+                    if _m in _mmmr_c:
+                        continue
 
-            # Mantém o formato antigo que a tela já espera:
-            # nome, pontuação simulada, pontuação atual, delta
-            st.session_state["sim_res"] = [
-                (_nm, _sp, _rp, _dlt)
-                for _nm, _sp, _rp, _dlt, _sc2 in _sim_r
-            ]
+                    if _ch == "t1":
+                        _mmmr_c[_m] = (1, 0, None)
+                    elif _ch == "t2":
+                        _mmmr_c[_m] = (0, 1, None)
+                # Bônus simulado: sobrepõe apenas o que o usuário escolheu
+                _sim_br = list(br) if br else [None, None]
+                if st.session_state.get("sim_art"):
+                    _sim_br[0] = st.session_state["sim_art"]
+                if st.session_state.get("sim_sel"):
+                    _sim_br[1] = st.session_state["sim_sel"]
+                _sim_br = tuple(_sim_br)
+                _sim_r = []
+                for _nm, _gb, _bb, _xm, _rsc, _ in bettors:
+                    _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495)
+                    _d2  = _sc2["total"] - _rsc["total"]
+                    _sim_r.append((_nm, _sc2["total"], _rsc["total"], _d2, _sc2))
 
-        # ══ Ranking resultado ═════════════════════════════════════════
-        if st.session_state.get("sim_res"):
-            st.markdown('<div class="sh">🏆 Ranking Simulado</div>',
+                # Ordena o ranking simulado pelos mesmos critérios oficiais
+                _sim_r.sort(key=lambda x: ranking_score_key(x[0], x[4]))
+
+                # Mantém o formato antigo que a tela já espera:
+                # nome, pontuação simulada, pontuação atual, delta
+                st.session_state["sim_res"] = [
+                    (_nm, _sp, _rp, _dlt)
+                    for _nm, _sp, _rp, _dlt, _sc2 in _sim_r
+                ]
+
+            # ══ Ranking resultado ═════════════════════════════════════════
+            if st.session_state.get("sim_res"):
+                st.markdown('<div class="sh">🏆 Ranking Simulado</div>',
+                            unsafe_allow_html=True)
+                _hc = st.columns([0.5, 4, 1.5, 1.5, 1.5])
+                for _c, _h in zip(_hc, ["#", "Participante", "Simulado", "Atual", "Δ"]):
+                    _c.markdown(
+                        f'<div style="font-size:.7rem;font-weight:700;opacity:.5;'
+                        f'text-transform:uppercase;letter-spacing:.8px">{_h}</div>',
                         unsafe_allow_html=True)
-            _hc = st.columns([0.5, 4, 1.5, 1.5, 1.5])
-            for _c, _h in zip(_hc, ["#", "Participante", "Simulado", "Atual", "Δ"]):
-                _c.markdown(
-                    f'<div style="font-size:.7rem;font-weight:700;opacity:.5;'
-                    f'text-transform:uppercase;letter-spacing:.8px">{_h}</div>',
-                    unsafe_allow_html=True)
-            for _rk, (_nm, _sp, _rp, _dlt) in enumerate(st.session_state["sim_res"], 1):
-                _dc = "#22C55E" if _dlt > 0 else "#F87171" if _dlt < 0 else "inherit"
-                _ds2 = f"+{_dlt}" if _dlt > 0 else str(_dlt)
-                _rc2 = st.columns([0.5, 4, 1.5, 1.5, 1.5])
-                _rc2[0].markdown(
-                    f'<div style="font-size:.82rem;opacity:.5">{MEDALS.get(_rk, _rk)}</div>',
-                    unsafe_allow_html=True)
-                _rc2[1].markdown(
-                    f'<div style="font-size:.85rem;font-weight:600">{_nm}</div>',
-                    unsafe_allow_html=True)
-                _rc2[2].markdown(
-                    f'<div style="font-size:.9rem;font-weight:900;color:#D6B864">{_sp}</div>',
-                    unsafe_allow_html=True)
-                _rc2[3].markdown(
-                    f'<div style="font-size:.85rem;opacity:.55">{_rp}</div>',
-                    unsafe_allow_html=True)
-                _rc2[4].markdown(
-                    f'<div style="font-size:.85rem;font-weight:700;color:{_dc}">{_ds2}</div>',
-                    unsafe_allow_html=True)
+                for _rk, (_nm, _sp, _rp, _dlt) in enumerate(st.session_state["sim_res"], 1):
+                    _dc = "#22C55E" if _dlt > 0 else "#F87171" if _dlt < 0 else "inherit"
+                    _ds2 = f"+{_dlt}" if _dlt > 0 else str(_dlt)
+                    _rc2 = st.columns([0.5, 4, 1.5, 1.5, 1.5])
+                    _rc2[0].markdown(
+                        f'<div style="font-size:.82rem;opacity:.5">{MEDALS.get(_rk, _rk)}</div>',
+                        unsafe_allow_html=True)
+                    _rc2[1].markdown(
+                        f'<div style="font-size:.85rem;font-weight:600">{_nm}</div>',
+                        unsafe_allow_html=True)
+                    _rc2[2].markdown(
+                        f'<div style="font-size:.9rem;font-weight:900;color:#D6B864">{_sp}</div>',
+                        unsafe_allow_html=True)
+                    _rc2[3].markdown(
+                        f'<div style="font-size:.85rem;opacity:.55">{_rp}</div>',
+                        unsafe_allow_html=True)
+                    _rc2[4].markdown(
+                        f'<div style="font-size:.85rem;font-weight:700;color:{_dc}">{_ds2}</div>',
+                        unsafe_allow_html=True)
 
 
 # ── Footer
