@@ -1660,17 +1660,26 @@ def ranking_bettor_key(bettor):
 # ══════════════════════════════════════════════════════════════════════
 # FILE LOADING
 # ══════════════════════════════════════════════════════════════════════
+
+
 @st.cache_data(show_spinner=False)
 def load_t495(path):
     try:
-        wb=load_workbook(path,data_only=True,read_only=True)
-        if 'T495' not in wb.sheetnames: return {}
-        ws=wb['T495']; t={}
-        for row in ws.iter_rows(min_row=3,values_only=True):
-            if row[0] and isinstance(row[0],str) and len(row[0])==8:
-                t[row[0]]=[str(v) if v else '?' for v in row[1:9]]
+        wb = load_workbook(path, data_only=True)        # sem read_only (mais tolerante)
+        _nome = next((s for s in wb.sheetnames if s.strip().upper() == "T495"), None)
+        if not _nome:
+            return {}
+        ws = wb[_nome]
+        t = {}
+        for row in ws.iter_rows(min_row=3, values_only=True):
+            if not row or row[0] is None:
+                continue
+            _k = str(row[0]).strip()
+            if len(_k) == 8:
+                t[_k] = [str(v).strip() if v is not None else "?" for v in row[1:9]]
         return t
-    except: return {}
+    except Exception:
+        return {}
 
 @st.cache_data(show_spinner=False)
 def load_gab(path):
@@ -2119,8 +2128,8 @@ with st.sidebar:
         gab_path = None
     else:
         gsel = st.selectbox("📋 Gabarito", [n for n,_ in gabs])
-        gab_path = next(p for n,p in gabs if n==gsel) # LOCAL
-        #gab_path = _baixar_gabarito_do_sheets()    # SHEETS: descomente p/ testar
+        #gab_path = next(p for n,p in gabs if n==gsel) # LOCAL
+        gab_path = _baixar_gabarito_do_sheets()    # SHEETS: descomente p/ testar
         st.success(f"✅ {gsel}")
 
     st.markdown("---")
