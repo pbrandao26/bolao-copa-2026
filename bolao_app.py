@@ -2456,7 +2456,7 @@ with T1:
     # Chart mode
     chart_mode = st.radio(
         "Modo:",
-        ["📈 Evolução Acumulada", "📊 Pontuação por Fase"],
+        ["📈 Evolução Acumulada", "📉 Evolução de Posição", "📊 Pontuação por Fase", "🔵 Dispersão"],
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -2555,7 +2555,9 @@ with T1:
         st.markdown(legend_html, unsafe_allow_html=True)
         st.plotly_chart(fig_evo, width='stretch', config={"displayModeBar": False})
 
-    else:  # Pontuação por fase
+
+
+    elif chart_mode == "📊 Pontuação por Fase":
         PHASES_ORDER = ["Grupos","Bônus","R32","Oitavas","Quartas","Semi","3o Lugar","Final"]
 
         def phase_pts(sc, phase):
@@ -2594,6 +2596,304 @@ with T1:
         )
         st.plotly_chart(fig_bar, width='stretch', config={"displayModeBar": False})
 
+# ── EVOLUÇÃO DE POSIÇÃO ──────────────────────────────────────────────
+    elif chart_mode == "📉 Evolução de Posição":
+
+        # Build sorted list of all match dates (group + KO)
+        all_match_dates = sorted(set(
+            [gf[0] for gf in GROUP_FIXTURES] + KO_DATES
+        ))
+
+        # For each date, calculate cumulative pts for ALL bettors, then rank
+        # Build pts_by_date for every bettor (not just active_bettors)
+        all_pts_by_date: dict[str, dict] = {}
+        for nm, gb, _, xm, sc, _ in bettors:
+            pbd: dict = {
+                date(2026, 7, 19): sc["art_pts"],
+                date(2026, 6, 27): sc["mg_pts"],
+            }
+            for m, (d_, g, t1, t2) in enumerate(GROUP_FIXTURES):
+                p = sc["gdet"].get(m)
+                if p is not None and p > 0:
+                    pbd[d_] = pbd.get(d_, 0) + p
+            for m, ko_date in enumerate(KO_DATES):
+                p = sc["mdet"].get(m)
+                if p is not None and p > 0:
+                    pbd[ko_date] = pbd.get(ko_date, 0) + p
+            all_pts_by_date[nm] = pbd
+
+        # Build cumulative series per bettor per date
+        cumul_all: dict[str, list] = {nm: [] for nm in [b[0] for b in bettors]}
+        for d in all_match_dates:
+            running_map: dict[str, int] = {}
+            for nm in cumul_all:
+                prev = cumul_all[nm][-1] if cumul_all[nm] else 0
+                running_map[nm] = prev + all_pts_by_date[nm].get(d, 0)
+            for nm in cumul_all:
+                cumul_all[nm].append(running_map[nm])
+
+        # Rank per date: ties share highest position (rank 1 = best)
+        rank_all: dict[str, list] = {nm: [] for nm in [b[0] for b in bettors]}
+        for di in range(len(all_match_dates)):
+            scores_at_d = {nm: cumul_all[nm][di] for nm in cumul_all}
+            sorted_scores = sorted(scores_at_d.values(), reverse=True)
+            for nm in rank_all:
+                # dense rank: 1 = highest score
+                rank_all[nm].append(sorted_scores.index(scores_at_d[nm]) + 1)
+
+        fig_pos = go.Figure()
+
+        # Phase zone fills
+        for ph_name, d0, d1, color in PHASE_ZONES:
+            fig_pos.add_vrect(
+                x0=str(d0), x1=str(d1),
+                fillcolor=color, layer="below",
+                line=dict(width=1, color=color, dash="dot"),
+            )
+            fig_pos.add_annotation(
+                x=str(d0), xref="x", y=1.0, yref="paper",
+                text=f"<b>{ph_name}</b>",
+                showarrow=False, xanchor="left", yanchor="top",
+                font=dict(size=9, color="rgba(200,220,240,.70)"),
+                bgcolor="rgba(0,0,0,0)", borderpad=3,
+            )
+
+        n_bettors = len(bettors)
+        for idx, (nm, *_) in enumerate(active_bettors):
+            color = CHART_COLORS[idx % len(CHART_COLORS)]
+            ranks_y = rank_all[nm]
+            dates_x = [str(d) for d in all_match_dates]
+            fig_pos.add_trace(go.Scatter(
+                x=dates_x,
+                y=ranks_y,
+                mode="lines+markers",
+                name=nm,
+                line=dict(color=color, width=2.5),
+                marker=dict(size=6, color=color,
+                            line=dict(color="white", width=1.5)),
+                hovertemplate=(
+                    f"<b>{nm}</b><br>"
+                    "%{x}: <b>%{y}° lugar</b><extra></extra>"
+                ),
+            ))
+
+        fig_pos.update_layout(
+            height=400, margin=dict(l=0, r=10, t=36, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", y=1.08, x=0,
+                        font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(
+                type="category",
+                gridcolor="rgba(128,128,128,.10)",
+                tickfont=dict(size=10),
+                tickangle=-35,
+                showline=True, linecolor="rgba(128,128,128,.2)",
+                title=dict(text="Data do jogo", font=dict(size=11)),
+            ),
+            yaxis=dict(
+                gridcolor="rgba(128,128,128,.12)",
+                tickfont=dict(size=11),
+                title=dict(text="Posição", font=dict(size=11)),
+                autorange="reversed",          # 1° no topo
+                range=[n_bettors + 0.5, 0.5],  # margem superior/inferior
+                dtick=1,
+                tickvals=list(range(1, n_bettors + 1)),
+                ticktext=[f"{i}°" for i in range(1, n_bettors + 1)],
+            ),
+            hovermode="x unified",
+        )
+
+        # Reuse same phase legend strip
+        #st.markdown(legend_html, unsafe_allow_html=True)
+        st.plotly_chart(fig_pos, width='stretch', config={"displayModeBar": False})
+
+    elif chart_mode == "🔵 Dispersão":
+        # ── DISPERSÃO: Pontuação × Volatilidade de Ranking ─────────────────
+        st.markdown('<div class="sh">🔵 Dispersão: Rendimento × Consistência</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-size:.7rem;opacity:.8;margin:-2px 0 12px;line-height:1.55;'
+            'padding:7px 11px;border-radius:8px;background:rgba(13,133,135,.08);'
+            'border:1px solid rgba(13,133,135,.22);border-left:3px solid #0D8587">'
+            '<b style="opacity:.75;text-transform:uppercase;letter-spacing:.4px;font-size:.66rem">Como ler</b><br>'
+            'Eixo X = <b>Volatilidade</b> (desvio padrão das variações diárias de posição — quão instável foi o desempenho). '
+            'Eixo Y = <b>Pontuação acumulada</b>. '
+            'Ideal: canto <b>superior esquerdo</b> (alto rendimento, baixa volatilidade). '
+            'Cor: <b>quente</b> → melhor posição final · <b>fria</b> → pior posição final.</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Recompute cumulative + rank for all bettors (may reuse if already done above) ──
+        import numpy as _np
+
+        _all_match_dates = sorted(set(
+            [gf[0] for gf in GROUP_FIXTURES] + KO_DATES
+        ))
+
+        _all_pbd: dict[str, dict] = {}
+        for nm, gb, _, xm, sc, _ in bettors:
+            pbd_: dict = {
+                date(2026, 7, 19): sc["art_pts"],
+                date(2026, 6, 27): sc["mg_pts"],
+            }
+            for m, (d_, g, t1, t2) in enumerate(GROUP_FIXTURES):
+                p = sc["gdet"].get(m)
+                if p is not None and p > 0:
+                    pbd_[d_] = pbd_.get(d_, 0) + p
+            for m, ko_date in enumerate(KO_DATES):
+                p = sc["mdet"].get(m)
+                if p is not None and p > 0:
+                    pbd_[ko_date] = pbd_.get(ko_date, 0) + p
+            _all_pbd[nm] = pbd_
+
+        _cumul: dict[str, list] = {nm: [] for nm in [b[0] for b in bettors]}
+        for d in _all_match_dates:
+            _rm: dict[str, int] = {}
+            for nm in _cumul:
+                prev = _cumul[nm][-1] if _cumul[nm] else 0
+                _rm[nm] = prev + _all_pbd[nm].get(d, 0)
+            for nm in _cumul:
+                _cumul[nm].append(_rm[nm])
+
+        _rank: dict[str, list] = {nm: [] for nm in [b[0] for b in bettors]}
+        for di in range(len(_all_match_dates)):
+            _scores_d = {nm: _cumul[nm][di] for nm in _cumul}
+            _sorted_s = sorted(_scores_d.values(), reverse=True)
+            for nm in _rank:
+                _rank[nm].append(_sorted_s.index(_scores_d[nm]) + 1)
+
+        # Compute metrics per bettor
+        _scatter_data = []
+        for pos_idx, (nm, *_rest) in enumerate(bettors):
+            sc = _rest[3]
+            total_pts = sc["total"]
+            ranks_series = _rank[nm]
+
+            # Rank volatility = std dev of daily rank changes
+            rank_changes = [abs(ranks_series[i] - ranks_series[i-1]) for i in range(1, len(ranks_series))]
+            vol = float(_np.std(rank_changes)) if len(rank_changes) > 1 else 0.0
+
+            final_pos = pos_idx + 1  # 1-indexed position in sorted bettors list
+            _scatter_data.append({
+                "name": nm,
+                "pts": total_pts,
+                "vol": round(vol, 2),
+                "pos": final_pos,
+            })
+
+        # Heatmap colour: pos 1 = hottest (#FF4040), last = coldest (#2563EB)
+        n_b = len(_scatter_data)
+
+        def _pos_to_color(pos: int, n: int) -> str:
+            """Interpolate from hot red (pos 1) → cool blue (pos n)."""
+            t = (pos - 1) / max(n - 1, 1)  # 0 = best, 1 = worst
+            # Hot: (255, 64, 64)  →  Cool: (37, 99, 235)
+            r = int(255 + t * (37 - 255))
+            g = int(64  + t * (99 - 64))
+            b = int(64  + t * (235 - 64))
+            return f"rgb({r},{g},{b})"
+
+        bubble_colors = [_pos_to_color(d["pos"], n_b) for d in _scatter_data]
+
+        fig_scatter = go.Figure()
+
+        # Background quadrant annotations
+        _max_vol  = max(d["vol"] for d in _scatter_data) if _scatter_data else 1
+        _max_pts  = max(d["pts"] for d in _scatter_data) if _scatter_data else 1
+        _mid_vol  = _max_vol / 2
+        _mid_pts  = _max_pts / 2
+
+        _quad_labels = [
+            ("💎 Sólidos", 0,         _mid_vol, _mid_pts, _max_pts, "rgba(13,133,135,.06)"),
+            ("⚡ Explosivos", _mid_vol, _max_vol, _mid_pts, _max_pts, "rgba(214,184,100,.05)"),
+            ("😴 Apagados", 0,         _mid_vol, 0,        _mid_pts, "rgba(128,128,128,.04)"),
+            ("🎢 Imprevisíveis", _mid_vol, _max_vol, 0,      _mid_pts, "rgba(178,88,78,.05)"),
+        ]
+
+        for label, x0, x1, y0, y1, clr in _quad_labels:
+            fig_scatter.add_shape(
+                type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
+                fillcolor=clr, line=dict(width=0), layer="below",
+            )
+            # Label in middle of quadrant
+            fig_scatter.add_annotation(
+                x=(x0 + x1) / 2, y=(y0 + y1) / 2,
+                text=f'<span style="font-size:11px;opacity:.45">{label}</span>',
+                showarrow=False,
+                font=dict(size=11, color="rgba(180,190,210,.5)"),
+            )
+
+        # Midpoint dashed lines
+        fig_scatter.add_shape(
+            type="line", x0=_mid_vol, x1=_mid_vol, y0=0, y1=_max_pts * 1.08,
+            line=dict(color="rgba(128,128,128,.25)", dash="dot", width=1),
+        )
+        fig_scatter.add_shape(
+            type="line", x0=0, x1=_max_vol * 1.08, y0=_mid_pts, y1=_mid_pts,
+            line=dict(color="rgba(128,128,128,.25)", dash="dot", width=1),
+        )
+
+        fig_scatter.add_trace(go.Scatter(
+            x=[d["vol"] for d in _scatter_data],
+            y=[d["pts"] for d in _scatter_data],
+            mode="markers+text",
+            text=[d["name"] for d in _scatter_data],
+            textposition="top center",
+            textfont=dict(size=10, color="rgba(220,230,245,.8)"),
+            marker=dict(
+                size=18,
+                color=bubble_colors,
+                line=dict(color="rgba(255,255,255,.25)", width=1.5),
+                opacity=0.88,
+            ),
+            customdata=[[d["name"], d["pos"], d["pts"], d["vol"]] for d in _scatter_data],
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                "🏅 Posição final: <b>%{customdata[1]}°</b><br>"
+                "📊 Pontuação: <b>%{customdata[2]} pts</b><br>"
+                "📉 Volatilidade de ranking: <b>%{customdata[3]}</b><br>"
+                "<extra></extra>"
+            ),
+        ))
+
+        fig_scatter.update_layout(
+            height=480, margin=dict(l=10, r=10, t=20, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(
+                gridcolor="rgba(128,128,128,.10)",
+                tickfont=dict(size=10),
+                title=dict(text="Volatilidade de Ranking (σ variações diárias)", font=dict(size=11)),
+                zeroline=False,
+                range=[-_max_vol * 0.06, _max_vol * 1.12],
+            ),
+            yaxis=dict(
+                gridcolor="rgba(128,128,128,.12)",
+                tickfont=dict(size=11),
+                title=dict(text="Pontuação Acumulada (pts)", font=dict(size=11)),
+                zeroline=False,
+                range=[0, _max_pts * 1.12],
+            ),
+            showlegend=False,
+            hovermode="closest",
+        )
+
+        # Colour scale legend strip
+        cscale_html = (
+            '<div style="display:flex;align-items:center;gap:10px;'
+            'margin:-2px 0 6px;padding:7px 12px;border-radius:8px;'
+            'background:rgba(128,128,128,.06);font-size:.75rem">'
+            '<span style="opacity:.65">Cor da bolinha:</span>'
+            '<span style="display:inline-flex;align-items:center;gap:5px">'
+            '<span style="width:12px;height:12px;border-radius:50%;background:#FF4040;display:inline-block"></span>'
+            '<span style="opacity:.8">1° lugar</span></span>'
+            '<span style="display:inline-block;width:80px;height:9px;border-radius:4px;'
+            'background:linear-gradient(to right,#FF4040,#2563EB);opacity:.75"></span>'
+            '<span style="display:inline-flex;align-items:center;gap:5px">'
+            f'<span style="width:12px;height:12px;border-radius:50%;background:#2563EB;display:inline-block"></span>'
+            f'<span style="opacity:.8">{n_b}° lugar</span></span>'
+            '</div>'
+        )
+        st.markdown(cscale_html, unsafe_allow_html=True)
+        st.plotly_chart(fig_scatter, width='stretch', config={"displayModeBar": False})
 
 # ── TAB 2: GRUPOS ────────────────────────────────────────────────────
 with T2:
