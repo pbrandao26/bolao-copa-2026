@@ -2309,6 +2309,15 @@ with T1:
     cA,cB = st.columns([3,2], gap="large")
     with cA:
         st.markdown('<div class="sh">🏆 Classificação Geral</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-size:.7rem;opacity:.8;margin:-2px 0 12px;line-height:1.55;'
+            'padding:7px 11px;border-radius:8px;background:rgba(13,133,135,.08);'
+            'border:1px solid rgba(13,133,135,.22);border-left:3px solid #0D8587">'
+            '<b style="opacity:.75;text-transform:uppercase;letter-spacing:.4px;'
+            'font-size:.66rem">Critérios de desempate</b><br>'
+            '<b>1º</b> Pontos no Mata-Mata · <b>2º</b> nº de Cravadas (Placares exatos de 5 pts na fase de grupos) · '
+            '<b>3º</b> Pontos na fase de grupos · <b>4º</b> sorteio.</div>',
+            unsafe_allow_html=True)
         for pos,(nm,_,_,_,sc,_) in enumerate(_display,1):
             real_pos = next(i for i,(b,*_) in enumerate(bettors,1) if b==nm)
             cls   = {1:'rc1',2:'rc2',3:'rc3'}.get(real_pos,'rcN')
@@ -2325,7 +2334,7 @@ with T1:
               <div style="font-size:1.35rem;width:32px;text-align:center;flex-shrink:0">{medal}</div>
               <div style="flex:1;min-width:0">
                 <div class="rc-name">{nm}{prize_badge}</div>
-                <div class="rc-sub">Grupos {sc['grupos']} · Bônus {sc['bonus']} · MM {sc['mm']}</div>
+                <div class="rc-sub">Grupos {sc['grupos']} · Bônus {sc['bonus']} · MM {sc['mm']} · Cravadas {_acertos_5pts_grupos(sc)}</div>
                 <div class="bar-bg"><div class="bar-fg" style="width:{pct}%"></div></div>
               </div>
               <div style="text-align:right;flex-shrink:0">
@@ -2373,7 +2382,7 @@ with T1:
               <div style="font-size:1.35rem;font-weight:800;margin:3px 0">🥇 {nm0}</div>
               <div class="mc-v" style="font-size:1.9rem;text-align:left;color:#D6B864">{sc0['total']} pts</div>
               <div style="font-size:.73rem;color:#5C5F62;margin-top:3px">
-                G {sc0['grupos']} · B {sc0['bonus']} · MM {sc0['mm']}</div>
+                G {sc0['grupos']} · B {sc0['bonus']} · MM {sc0['mm']} · Cravadas {_acertos_5pts_grupos(sc0)}</div>
             </div>""", unsafe_allow_html=True)
 
     # ── EVOLUÇÃO TEMPORAL ────────────────────────────────────────────────
