@@ -3368,7 +3368,7 @@ with T4:
 
     st.markdown(f"""
     <div class="hero" style="padding:18px 26px;margin-bottom:12px">
-      <span style="font-size:1.5rem">{medal}</span>
+      <span style="font-size:1.5rem;color:#FFFFFF;font-weight:800">{medal}</span>
       <span class="hero-title" style="font-size:1.45rem;margin-left:10px">{bnm}</span>
       <div class="hero-sub" style="margin-top:6px">
         Total: <b>{bsc['total']} pts</b> &nbsp;·&nbsp;
