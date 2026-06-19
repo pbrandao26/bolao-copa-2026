@@ -2741,8 +2741,16 @@ with T1:
             ),
             hovermode="x unified",
         )
+        # Phase legend strip
+        legend_html = (
+            '<div style="display:flex;flex-wrap:wrap;align-items:center;'
+            'gap:0;margin:-4px 0 6px;padding:6px 10px;'
+            'border-radius:8px;background:rgba(128,128,128,.06)">' +
+            f'<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:.78rem;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#123A56;opacity:.75;flex-shrink:0"></span>Grupos</span>'f'<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:.78rem;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#0D8587;opacity:.75;flex-shrink:0"></span>R32</span>'f'<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:.78rem;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#D6B864;opacity:.75;flex-shrink:0"></span>Oitavas</span>'f'<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:.78rem;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#DC884A;opacity:.75;flex-shrink:0"></span>Quartas</span>'f'<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:.78rem;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#B2584E;opacity:.75;flex-shrink:0"></span>Semis</span>'f'<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:.78rem;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:13px;height:13px;border-radius:3px;background:#7B3FA0;opacity:.75;flex-shrink:0"></span>3°/Final</span>' +
+            '</div>'
+        )
  
-        #st.markdown(legend_html, unsafe_allow_html=True)
+        st.markdown(legend_html, unsafe_allow_html=True)
         st.plotly_chart(fig_pos, width='stretch', config={"displayModeBar": False})
 
     # ── DISPERSÃO: Pontuação × Volatilidade de Ranking ─────────────────
