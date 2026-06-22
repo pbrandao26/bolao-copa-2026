@@ -1582,7 +1582,7 @@ def picks_by_round(gb, xm, t495_):
             out.setdefault(rnd, set()).add(p)
     return out
 
-def score_all(gb,xm,bb,gr,mmr,br,t495):
+def score_all(gb,xm,bb,gr,mmr,br,t495,t495_new):
     gdet={}; gt=0
     for m,(r1,r2) in gr.items():
         bv=gb.get(m)
@@ -1595,7 +1595,7 @@ def score_all(gb,xm,bb,gr,mmr,br,t495):
         if mb and mr_ and str(mb).strip().lower()==str(mr_).strip().lower(): mp=5
     rw,rn={},{}
     if gr:
-        r32r,*_=build_r32(sort_st(calc_st(gr)),t495)
+        r32r,*_=build_r32(sort_st(calc_st(gr)),t495_new)   # REAL → tabela nova
         rw,rn=build_bracket(r32r,mmr)
     bp,_=sim_bet(gb,xm,t495)
 
@@ -1676,6 +1676,27 @@ def load_t495(path):
                 continue
             _k = str(row[0]).strip()
             if len(_k) == 8:
+                t[_k] = [str(v).strip() if v is not None else "?" for v in row[1:9]]
+        return t
+    except Exception:
+        return {}
+
+@st.cache_data(show_spinner=False)
+def load_t495_new(path):
+    """Lê a aba T495_2 (tabela CORRETA) → {chave(8 letras): [8 valores]}.
+    Se não existir, devolve {} (o chamador faz fallback para a antiga)."""
+    try:
+        wb = load_workbook(path, data_only=True)
+        _nome = next((s for s in wb.sheetnames if s.strip().upper() == "T495_2"), None)
+        if not _nome:
+            return {}
+        ws = wb[_nome]
+        t = {}
+        for row in ws.iter_rows(min_row=1, values_only=True):
+            if not row or row[0] is None:
+                continue
+            _k = str(row[0]).strip()
+            if len(_k) == 8 and _k.isalpha():
                 t[_k] = [str(v).strip() if v is not None else "?" for v in row[1:9]]
         return t
     except Exception:
@@ -1815,6 +1836,7 @@ def load_consolidada(path):
 def load_all_data_consolidated(gab_path, consol_path):
     """Versão rápida: lê uma única planilha consolidada."""
     t495      = load_t495(gab_path)
+    t495_new  = load_t495_new(gab_path) or t495   # fallback: igual à antiga
     gr,mmr,br = load_gab(gab_path)
     consol    = load_consolidada(consol_path)
     bettors   = []
@@ -1824,11 +1846,12 @@ def load_all_data_consolidated(gab_path, consol_path):
         prnd = picks_by_round(gb, xm, t495)
         bettors.append((nm, gb, bb, xm, sc, prnd))
     bettors.sort(key=ranking_bettor_key)
-    return t495, gr, mmr, br, bettors
+    return t495, t495_new, gr, mmr, br, bettors
 
 @st.cache_data(show_spinner=False)
 def load_all_data(gab_path, parts_tuple):
     t495      = load_t495(gab_path)
+    t495_new  = load_t495_new(gab_path) or t495   # fallback: igual à antiga
     gr,mmr,br = load_gab(gab_path)
 
     def _load_one(item):
@@ -1843,7 +1866,7 @@ def load_all_data(gab_path, parts_tuple):
         bettors = list(ex.map(_load_one, parts_tuple))
 
     bettors.sort(key=ranking_bettor_key)
-    return t495, gr, mmr, br, bettors
+    return t495, t495_new, gr, mmr, br, bettors
 
 def _mc_bucket_weights(a, b, c, step=0.05):
     """Normaliza 3 pesos para somar 1 e os arredonda numa grade (5% por padrão)
@@ -1872,7 +1895,7 @@ def compute_mc(fingerprint, _bettors, w_fifa=MC_W_FIFA, w_forma=MC_W_FORMA, w_cr
     import random as _random
  
     _ss = sort_st(calc_st(gr))
-    r32, _g1, _g2, _g3, _key = build_r32(_ss, t495)
+    r32, _g1, _g2, _g3, _key = build_r32(_ss, t495_new)
     w_real, tn_real = build_bracket(r32, mmr)
     teams = sorted({t for m in range(16) for t in r32[m] if t and t != '?'})
     if len(teams) < 2:
@@ -2219,16 +2242,16 @@ else:
 _fp = _compute_fingerprint(_all_paths)
 _disk_data = _disk_cache_get(_fp)
 if _disk_data is not None:
-    t495, gr, mmr, br, bettors = _disk_data
+    t495, t495_new, gr, mmr, br, bettors = _disk_data
 else:
     with st.spinner("Carregando dados..."):
         if CONSOLIDADA_PATH.exists():
-            t495, gr, mmr, br, bettors = load_all_data_consolidated(gab_path, str(CONSOLIDADA_PATH))
+            t495, t495_new, gr, mmr, br, bettors = load_all_data_consolidated(gab_path, str(CONSOLIDADA_PATH))
         else:
-            t495, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts))
+            t495, t495_new, gr, mmr, br, bettors = load_all_data(gab_path, tuple(parts))
     try:
         with open(_CACHE_PATH, "wb") as _cf:
-            pickle.dump({"fp": _fp, "data": (t495, gr, mmr, br, bettors)}, _cf,
+            pickle.dump({"fp": _fp, "data": (t495, t495_new, gr, mmr, br, bettors)}, _cf,
                         protocol=pickle.HIGHEST_PROTOCOL)
     except Exception:
         pass
@@ -2238,7 +2261,7 @@ stats = compute_stats(_fp, bettors)
 
 rw,rn = {},{}
 if gr:
-    r32r,*_ = build_r32(sort_st(calc_st(gr)), t495)
+    r32r,*_ = build_r32(sort_st(calc_st(gr)), t495_new) # ← new
     rw,rn   = build_bracket(r32r, mmr)
 
 rnd_ms = OrderedDict()
@@ -3966,7 +3989,7 @@ if MOSTRAR_SIMULACAO:
             _mgr_cur[_m] = _v
 
         if _mgr_cur:
-            _sim_r32r, *_ = build_r32(sort_st(calc_st(_mgr_cur)), t495)
+            _sim_r32r, *_ = build_r32(sort_st(calc_st(_mgr_cur)), t495_new)
         else:
             _sim_r32r = {_mi: ('?', '?') for _mi in range(16)}
 
@@ -4608,7 +4631,7 @@ if MOSTRAR_SIMULACAO:
                 _sim_br = tuple(_sim_br)
                 _sim_r = []
                 for _nm, _gb, _bb, _xm, _rsc, _ in bettors:
-                    _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495)
+                    _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495_new)
                     _d2  = _sc2["total"] - _rsc["total"]
                     _sim_r.append((_nm, _sc2["total"], _rsc["total"], _d2, _sc2))
 
