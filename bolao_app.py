@@ -106,6 +106,9 @@ html, body, [class*="css"] {
 .rc2 { border-left: 4px solid #7F7F7F; }
 .rc3 { border-left: 4px solid #DC884A; }
 .rcN { border-left: 4px solid #123A56; }
+.rc-model { border-left: 4px solid #B2584E !important;
+            background: rgba(178,88,78,.07);
+            border-color: rgba(178,88,78,.25); }
 .rc-name { font-size: .94rem; font-weight: 700; flex: 1; }
 .rc-sub  { font-size: .67rem; opacity: .6; margin-top: 2px; }
 .rc-pts  { font-size: 1.55rem; font-weight: 900; color: #D6B864 !important; }
@@ -1449,6 +1452,22 @@ KO_PTS={'R32':3,'Oitavas':5,'Quartas':8,'Semi':12,'3o Lugar':10,'Final':25}
 MEDALS={1:'🥇',2:'🥈',3:'🥉'}
 RND_ICO={'R32':'🔵','Oitavas':'🟢','Quartas':'🟡','Semi':'🔴','3o Lugar':'🟠','Final':'⭐'}
 
+# ── Participantes-modelo (previsões de IA/instituições) ───────────────
+# Aparecem para consulta mas NÃO contam no ranking, na contagem de
+# participantes nem no prêmio. Recebem uma posição "virtual" só p/ exibir.
+# Os nomes devem bater com o que aparece (derivado do nome do arquivo).
+MODEL_NAMES = {"GSachs", "Claude", "Chat GPT"}
+
+def _norm_name(s):
+    s = unicodedata.normalize("NFKD", str(s or "").strip().casefold())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return " ".join(s.split())
+
+_MODEL_NORM = {_norm_name(x) for x in MODEL_NAMES}
+
+def is_model(nm):
+    return _norm_name(nm) in _MODEL_NORM
+
 # constantes globais, ou logo antes da função compute_mc.
 MC_N_SIMS   = 20000          # nº de simulações
 MC_W_FIFA   = 0.5           # peso do ranking FIFA
@@ -2256,8 +2275,21 @@ else:
     except Exception:
         pass
 
+# ── Separa reais × modelos ────────────────────────────────────────────
+real_bettors  = [b for b in bettors if not is_model(b[0])]
+model_bettors = [b for b in bettors if is_model(b[0])]
+
+# Posições: reais numerados entre si; cada modelo recebe a posição que
+# ocuparia (nº de reais à frente + 1), sem deslocar ninguém.
+pos_map = {}
+for _i, _b in enumerate(real_bettors, 1):
+    pos_map[_b[0]] = _i
+for _b in model_bettors:
+    _k = ranking_bettor_key(_b)
+    pos_map[_b[0]] = sum(1 for _rb in real_bettors if ranking_bettor_key(_rb) < _k) + 1
+
 maxp = max((b[4]['total'] for b in bettors), default=1) or 1
-stats = compute_stats(_fp, bettors)
+stats = compute_stats(_fp, real_bettors)
 
 rw,rn = {},{}
 if gr:
@@ -2272,8 +2304,8 @@ c5 = st.columns(5)
 for col,(val,lbl) in zip(c5,[
     (f"{len(gr)}/72","Jogos Grupos"), (f"{len(mmr)}/32","Jogos MM"),
     (str(sum(a+b for a,b in gr.values())),"Gols"),
-    (str(bettors[0][4]['total']) if bettors else "0","Líder (pts)"),
-    (str(len(bettors)),"Participantes"),
+    (str(real_bettors[0][4]['total']) if real_bettors else "0","Líder (pts)"),
+    (str(len(real_bettors)),"Participantes"),
 ]):
     col.markdown(
         f'<div class="mc"><div class="mc-v">{val}</div>'
@@ -2294,17 +2326,22 @@ T5 = _tabs[4] if MOSTRAR_SIMULACAO else None
 
 # ── TAB 1: RANKING ───────────────────────────────────────────────────
 with T1:
-    n_parts    = len(bettors)
+    n_parts    = len(real_bettors)
     prize_pool = n_parts * 50
     prize_pct  = {1: .70, 2: .20, 3: .10}
 
     # ── Filtro de participantes
-    _all_rk_names = [b[0] for b in bettors]
-    _rc1, _rc2 = st.columns([1, 5])
+    _rc1, _rc2, _rc3 = st.columns([1, 4, 1.6])
     with _rc1:
         if st.button("✖ Limpar", width='stretch', key="rk_clear_ms"):
             st.session_state["rk_ms_sel"] = []
             st.rerun()
+    with _rc3:
+        _show_models = st.toggle(
+            "🤖 Modelos", value=True, key="rk_show_models",
+            help="Mostrar/esconder os participantes-modelo (IA/instituições)")
+    # opções do filtro respeitam o switch
+    _all_rk_names = [b[0] for b in (bettors if _show_models else real_bettors)]
     with _rc2:
         if "rk_ms_sel" not in st.session_state:
             st.session_state["rk_ms_sel"] = []
@@ -2325,9 +2362,15 @@ with T1:
 
     if _rk_chosen:
         _display = [b for b in bettors if b[0] in set(_rk_chosen)]
+        if not _show_models:
+            _display = [b for b in _display if not is_model(b[0])]
         _use_expand = False
     else:
-        _display  = bettors if _show_all else bettors[:10]
+        if _show_all:
+            _display = bettors if _show_models else real_bettors
+        else:
+            # visão padrão: só os 10 primeiros reais (modelos não entram aqui)
+            _display = real_bettors[:10]
         _use_expand = True
     cA,cB = st.columns([3,2], gap="large")
     with cA:
@@ -2341,22 +2384,35 @@ with T1:
             '<b>1º</b> Pontos no Mata-Mata · <b>2º</b> nº de Cravadas (Placares exatos de 5 pts na fase de grupos) · '
             '<b>3º</b> Pontos na fase de grupos · <b>4º</b> sorteio.</div>',
             unsafe_allow_html=True)
-        for pos,(nm,_,_,_,sc,_) in enumerate(_display,1):
-            real_pos = next(i for i,(b,*_) in enumerate(bettors,1) if b==nm)
-            cls   = {1:'rc1',2:'rc2',3:'rc3'}.get(real_pos,'rcN')
-            medal = MEDALS.get(real_pos, f"{real_pos}°")
-            pct   = int(sc['total']/maxp*100)
+        for (nm,_,_,_,sc,_) in _display:
+            _mod = is_model(nm)
+            real_pos = pos_map.get(nm, 0)
+            if _mod:
+                cls   = 'rc-model'
+                medal = f'≈{real_pos}°'
+            else:
+                cls   = {1:'rc1',2:'rc2',3:'rc3'}.get(real_pos,'rcN')
+                medal = MEDALS.get(real_pos, f"{real_pos}°")
+            pct   = int(sc['total']/maxp*100) if maxp else 0
             prize_badge = ""
-            if real_pos in prize_pct:
+            if (not _mod) and real_pos in prize_pct:
                 val = prize_pool * prize_pct[real_pos]
                 prize_badge = (f'<span style="background:rgba(214,184,100,.18);'
                     f'border:1px solid rgba(214,184,100,.4);border-radius:12px;'
                     f'padding:1px 8px;font-size:.65rem;font-weight:700;'
                     f'color:#D6B864;margin-left:6px">R$ {val:,.0f}</span>')
+            _model_badge = ""
+            if _mod:
+                _model_badge = ('<span style="background:rgba(178,88,78,.18);'
+                    'border:1px solid rgba(178,88,78,.5);border-radius:12px;'
+                    'padding:1px 8px;font-size:.6rem;font-weight:800;'
+                    'color:#B2584E;margin-left:6px;text-transform:uppercase;'
+                    'letter-spacing:.5px">🤖 Modelo</span>')
+            _medal_color = "#B2584E" if _mod else "inherit"
             st.markdown(f"""<div class="rc {cls}">
-              <div style="font-size:1.35rem;width:32px;text-align:center;flex-shrink:0">{medal}</div>
+              <div style="font-size:1.2rem;width:36px;text-align:center;flex-shrink:0;color:{_medal_color};font-weight:800">{medal}</div>
               <div style="flex:1;min-width:0">
-                <div class="rc-name">{nm}{prize_badge}</div>
+                <div class="rc-name">{nm}{_model_badge}{prize_badge}</div>
                 <div class="rc-sub">Grupos {sc['grupos']} · Bônus {sc['bonus']} · MM {sc['mm']} · Cravadas {_acertos_5pts_grupos(sc)}</div>
                 <div class="bar-bg"><div class="bar-fg" style="width:{pct}%"></div></div>
               </div>
@@ -2367,12 +2423,12 @@ with T1:
             </div>""", unsafe_allow_html=True)
 
         if _use_expand:
-            if not _show_all and len(bettors) > 10:
-                if st.button(f"👇 Ver todos os {len(bettors)} participantes",
+            if not _show_all and len(real_bettors) > 10:
+                if st.button(f"👇 Ver todos os {len(real_bettors)} participantes",
                                  width='stretch'):
                     st.session_state["show_all_ranking"] = True
                     st.rerun()
-            elif _show_all and len(bettors) > 10:
+            elif _show_all and len(real_bettors) > 10:
                 if st.button("👆 Mostrar apenas top 10",
                                  width='stretch'):
                     st.session_state["show_all_ranking"] = False
@@ -2399,7 +2455,7 @@ with T1:
         st.plotly_chart(fig, width='stretch', config={'displayModeBar':False})
 
         if bettors:
-            nm0,_,_,_,sc0,_ = bettors[0]
+            nm0,_,_,_,sc0,_ = real_bettors[0]
             st.markdown(f"""<div class="mc" style="text-align:left;padding:14px 18px">
               <div style="font-size:.65rem;color:#5C5F62;text-transform:uppercase;letter-spacing:1px">Líder atual</div>
               <div style="font-size:1.35rem;font-weight:800;margin:3px 0">🥇 {nm0}</div>
@@ -2549,12 +2605,13 @@ with T1:
                 cumul_y.append(running)
 
             color = CHART_COLORS[idx % len(CHART_COLORS)]
-            first = nm
+            _is_mod = is_model(nm)
+            first = (nm + " 🤖") if _is_mod else nm
             fig_evo.add_trace(go.Scatter(
                 x=dates_x, y=cumul_y,
                 mode="lines+markers",
                 name=first,
-                line=dict(color=color, width=2.5),
+                line=dict(color=color, width=2.5, dash="dot" if _is_mod else "solid"),
                 marker=dict(size=6, color=color,
                             line=dict(color="white", width=1.5)),
                 hovertemplate=f"<b>{nm}</b><br>%{{x}}: <b>%{{y}} pts</b><extra></extra>",
@@ -2678,13 +2735,17 @@ with T1:
             for nm in cumul_all:
                 cumul_all[nm].append(running_map[nm])
  
-        # Rank per date: ties share highest position (rank 1 = best)
+        # Rank per date — calculado SÓ entre reais; modelos recebem posição virtual
+        _real_name_set = {b[0] for b in real_bettors}
         rank_all: dict[str, list] = {nm: [] for nm in [b[0] for b in bettors]}
         for di in range(len(all_match_dates)):
             scores_at_d = {nm: cumul_all[nm][di] for nm in cumul_all}
-            sorted_scores = sorted(scores_at_d.values(), reverse=True)
+            real_scores = sorted(
+                (scores_at_d[nm] for nm in scores_at_d if nm in _real_name_set),
+                reverse=True)
             for nm in rank_all:
-                rank_all[nm].append(sorted_scores.index(scores_at_d[nm]) + 1)
+                _sc_d = scores_at_d[nm]
+                rank_all[nm].append(sum(1 for s in real_scores if s > _sc_d) + 1)
  
         fig_pos = go.Figure()
  
@@ -2706,17 +2767,18 @@ with T1:
                 bgcolor="rgba(0,0,0,0)", borderpad=3,
             )
  
-        n_bettors = len(bettors)
+        n_bettors = len(real_bettors)
         for idx, (nm, *_) in enumerate(active_bettors):
             color = CHART_COLORS[idx % len(CHART_COLORS)]
+            _is_mod = is_model(nm)
             ranks_y = rank_all[nm]
             dates_x = [str(d) for d in all_match_dates]
             fig_pos.add_trace(go.Scatter(
                 x=dates_x,
                 y=ranks_y,
                 mode="lines+markers",
-                name=nm,
-                line=dict(color=color, width=2.5),
+                name=(nm + " 🤖") if _is_mod else nm,
+                line=dict(color=color, width=2.5, dash="dot" if _is_mod else "solid"),
                 marker=dict(size=6, color=color,
                             line=dict(color="white", width=1.5)),
                 hovertemplate=(
@@ -2833,16 +2895,20 @@ with T1:
             for nm in _cumul:
                 _cumul[nm].append(_rm[nm])
  
+        _real_name_set = {b[0] for b in real_bettors}
         _rank: dict[str, list] = {nm: [] for nm in [b[0] for b in bettors]}
         for di in range(len(_all_match_dates)):
             _scores_d = {nm: _cumul[nm][di] for nm in _cumul}
-            _sorted_s = sorted(_scores_d.values(), reverse=True)
+            _real_s = sorted(
+                (_scores_d[nm] for nm in _scores_d if nm in _real_name_set),
+                reverse=True)
             for nm in _rank:
-                _rank[nm].append(_sorted_s.index(_scores_d[nm]) + 1)
+                _v = _scores_d[nm]
+                _rank[nm].append(sum(1 for s in _real_s if s > _v) + 1)
  
-        # Compute metrics for ALL bettors (needed for consistent colour scale / final pos)
+        # Métricas de TODOS (escala de cor consistente); pos via pos_map (virtual p/ modelos)
         _scatter_all = []
-        for pos_idx, (nm, *_rest) in enumerate(bettors):
+        for (nm, *_rest) in bettors:
             sc = _rest[3]
             total_pts = sc["total"]
             ranks_series = _rank[nm]
@@ -2852,10 +2918,11 @@ with T1:
                 "name": nm,
                 "pts": total_pts,
                 "vol": round(vol, 2),
-                "pos": pos_idx + 1,
+                "pos": pos_map.get(nm, 0),
+                "model": is_model(nm),
             })
- 
-        n_b = len(_scatter_all)
+
+        n_b = len(real_bettors)
  
         def _pos_to_color(pos: int, n: int) -> str:
             t = (pos - 1) / max(n - 1, 1)
@@ -2871,8 +2938,10 @@ with T1:
         else:
             _scatter_data = _scatter_all
  
-        bubble_colors = [_pos_to_color(d["pos"], n_b) for d in _scatter_data]
- 
+        bubble_colors  = [_pos_to_color(d["pos"], n_b) for d in _scatter_data]
+        bubble_symbols = ["diamond" if d["model"] else "circle" for d in _scatter_data]
+        bubble_lines   = ["#B2584E" if d["model"] else "rgba(255,255,255,.25)" for d in _scatter_data]
+        bubble_lw      = [2.5 if d["model"] else 1.5 for d in _scatter_data] 
         fig_scatter = go.Figure()
  
         _max_vol = max((d["vol"] for d in _scatter_all), default=1) or 1
@@ -2917,13 +2986,17 @@ with T1:
             marker=dict(
                 size=18,
                 color=bubble_colors,
-                line=dict(color="rgba(255,255,255,.25)", width=1.5),
+                symbol=bubble_symbols,
+                line=dict(color=bubble_lines, width=bubble_lw),
                 opacity=0.88,
             ),
-            customdata=[[d["name"], d["pos"], d["pts"], d["vol"]] for d in _scatter_data],
+            customdata=[[(d["name"] + " 🤖") if d["model"] else d["name"],
+                         d["pos"], d["pts"], d["vol"],
+                         "Posição virtual" if d["model"] else "Posição final"]
+                        for d in _scatter_data],
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                "🏅 Posição final: <b>%{customdata[1]}°</b><br>"
+                "🏅 %{customdata[4]}: <b>%{customdata[1]}°</b><br>"
                 "📊 Pontuação: <b>%{customdata[2]} pts</b><br>"
                 "📉 Volatilidade de ranking: <b>%{customdata[3]}</b><br>"
                 "<extra></extra>"
@@ -3378,7 +3451,7 @@ with T3:
 
     # ── Overall MM ranking chart ──────────────────────────────────────────
     st.markdown('<div class="sh">📊 Ranking Mata-Mata</div>', unsafe_allow_html=True)
-    mmdf = pd.DataFrame([(b[0], b[4]["mm"]) for b in bettors], columns=["Apostador","Pts"])
+    mmdf = pd.DataFrame([(b[0], b[4]["mm"]) for b in real_bettors], columns=["Apostador","Pts"])
     fig2 = px.bar(mmdf, x="Apostador", y="Pts", text="Pts",
                   color="Pts", color_continuous_scale=["#B2584E","#DC884A","#D6B864"])
     fig2.update_layout(
@@ -3637,11 +3710,28 @@ with T4:
             _mcols = st.columns(3)
             _mc(_mcols[0], f"{_n_main}/{len(_rows)}", "Colocou o placar + popular")
             _mc(_mcols[1], f"{_n_unique}", "Palpites únicos (só você)")
-            _mc(_mcols[2], f"{_rank}º<span style='font-size:.9rem'> / {_rn}</span>",
-                "Ranking de ousadia")
+            if is_model(bnm):
+                _mc(_mcols[2], "—", "Ranking de ousadia (n/a p/ modelo)")
+            else:
+                _mc(_mcols[2], f"{_rank}º<span style='font-size:.9rem'> / {_rn}</span>",
+                    "Ranking de ousadia")
  
-            # Você vs média do bolão (alinhamento de placar exato)
-            _my_conf  = stats["conformity"].get(bnm, 0.0)
+            # Você vs média do bolão — conformidade recalculada contra o consenso REAL
+            # (necessário porque modelos não estão em stats["conformity"])
+            _gd2 = stats["group_dist"]
+            _pp_conf = []
+            for _m2, _bv2 in bgb.items():
+                _c2 = _gd2.get(_m2)
+                if not _c2:
+                    continue
+                try:
+                    _key2 = (int(_bv2[0]), int(_bv2[1]))
+                except Exception:
+                    continue
+                _tot2 = sum(_c2.values())
+                if _tot2:
+                    _pp_conf.append(_c2.get(_key2, 0) / _tot2)
+            _my_conf  = (sum(_pp_conf) / len(_pp_conf)) if _pp_conf else 0.0
             _avg_conf = (sum(stats["conformity"].values()) / len(stats["conformity"])
                          if stats["conformity"] else 0.0)
             _ax = max(_my_conf, _avg_conf, 0.01)
@@ -3726,7 +3816,7 @@ with T4:
                 
                 # média de pontos por jogo (entre quem apostou e o jogo já pontuou)
                 _pavg = {}
-                for _b in bettors:
+                for _b in real_bettors:
                     for _mm, _pv in _b[4].get('gdet', {}).items():
                         if _pv is not None:
                             _ac = _pavg.setdefault(_mm, [0, 0]); _ac[0] += _pv; _ac[1] += 1
@@ -3778,7 +3868,7 @@ with T4:
         st.caption("Quantos gols seus palpites da fase de grupos grupos somam, comparado ao resto do bolão.")
         _gt = {}
         _gc = {}
-        for _b in bettors:
+        for _b in real_bettors:
             _s = 0
             _k = 0
             for _p in _b[1].values():
@@ -3789,14 +3879,21 @@ with T4:
                     pass
             _gt[_b[0]] = _s
             _gc[_b[0]] = _k
-        _my_gt = _gt.get(bnm, 0)
-        _my_gc = _gc.get(bnm, 0)
+        # números do apostador selecionado direto de bgb (funciona p/ modelos também)
+        _my_gt = 0
+        _my_gc = 0
+        for _p in bgb.values():
+            try:
+                _my_gt += int(_p[0]) + int(_p[1])
+                _my_gc += 1
+            except Exception:
+                pass
         _my_gpg = (_my_gt / _my_gc) if _my_gc else 0.0
         _gpgs = [(_gt[k] / _gc[k]) for k in _gt if _gc[k]]
         _avg_gpg = (sum(_gpgs) / len(_gpgs)) if _gpgs else 0.0
         _avg_gt = (sum(_gt.values()) / len(_gt)) if _gt else 0.0
-        _rank_g = sorted(((k, (_gt[k] / _gc[k]) if _gc[k] else 0) for k in _gt), key=lambda x: -x[1])
-        _grk = next((i + 1 for i, (k, _v) in enumerate(_rank_g) if k == bnm), 0)
+        # rank de goleador entre os REAIS (virtual se for modelo)
+        _grk = sum(1 for k in _gt if ((_gt[k] / _gc[k]) if _gc[k] else 0) > _my_gpg) + 1
  
         _axg = max(_my_gpg, _avg_gpg, 0.01)
         st.markdown('<div style="font-size:.78rem;font-weight:700;margin:4px 0 4px">Gols por jogo</div>',
@@ -4358,7 +4455,7 @@ if MOSTRAR_SIMULACAO:
                     _w = st.session_state["mc_weights"]
                     _b = st.session_state.get("mc_boost_committed", True)
                     with st.spinner(f"Simulando {MC_N_SIMS:,} cenários…".replace(",", ".")):
-                        _R = compute_mc(_fp, bettors, _w[0], _w[1], _w[2], boost=_b)
+                        _R = compute_mc(_fp, real_bettors, _w[0], _w[1], _w[2], boost=_b)
                     if not _R:
                         st.warning("Não foi possível montar o chaveamento — confira se os "
                                    "grupos estão completos.")
@@ -4630,7 +4727,7 @@ if MOSTRAR_SIMULACAO:
                     _sim_br[1] = st.session_state["sim_sel"]
                 _sim_br = tuple(_sim_br)
                 _sim_r = []
-                for _nm, _gb, _bb, _xm, _rsc, _ in bettors:
+                for _nm, _gb, _bb, _xm, _rsc, _ in real_bettors:
                     _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495, t495_new)
                     _d2  = _sc2["total"] - _rsc["total"]
                     _sim_r.append((_nm, _sc2["total"], _rsc["total"], _d2, _sc2))
