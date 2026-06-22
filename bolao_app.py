@@ -4631,7 +4631,7 @@ if MOSTRAR_SIMULACAO:
                 _sim_br = tuple(_sim_br)
                 _sim_r = []
                 for _nm, _gb, _bb, _xm, _rsc, _ in bettors:
-                    _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495_new)
+                    _sc2 = score_all(_gb, _xm, _bb, _mgr_c, _mmmr_c, _sim_br, t495, t495_new)
                     _d2  = _sc2["total"] - _rsc["total"]
                     _sim_r.append((_nm, _sc2["total"], _rsc["total"], _d2, _sc2))
 
