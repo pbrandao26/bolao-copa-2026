@@ -1842,7 +1842,7 @@ def load_all_data_consolidated(gab_path, consol_path):
     bettors   = []
     for nm, d in consol.items():
         gb, bb, xm = d["gb"], d["bb"], d["xm"]
-        sc   = score_all(gb, xm, bb, gr, mmr, br, t495)
+        sc   = score_all(gb, xm, bb, gr, mmr, br, t495, t495_new)
         prnd = picks_by_round(gb, xm, t495)
         bettors.append((nm, gb, bb, xm, sc, prnd))
     bettors.sort(key=ranking_bettor_key)
@@ -1857,7 +1857,7 @@ def load_all_data(gab_path, parts_tuple):
     def _load_one(item):
         nm, fp = item
         gb, bb, xm = load_part(fp)
-        sc   = score_all(gb, xm, bb, gr, mmr, br, t495)
+        sc   = score_all(gb, xm, bb, gr, mmr, br, t495, t495_new)
         prnd = picks_by_round(gb, xm, t495)
         return (nm, gb, bb, xm, sc, prnd)
 
