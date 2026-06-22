@@ -44,6 +44,7 @@ from openpyxl.utils import get_column_letter
 PASTA_PADRAO     = "."
 PLANILHA_CORRETA = "matchups_r32_copa_2026.xlsx"
 ABA_CORRETA      = "R32 Matchups Certo"
+ARQUIVO_MENSAGENS = "mensagens_participantes_afetados.txt"
 
 ABA_CALC      = "Calc"
 CELULA_CHAVE  = "B88"
@@ -211,10 +212,13 @@ def analisar_participante(caminho, t495_correta):
 
         # em quem o participante pôs o X nesse jogo?
         if lider_x:
+            apostou_time = lider_team
             x_em = f"{lider_team} (líder grupo {leader_grp})"
         elif time_3o_x:
-            x_em = f"{time_errado} (3º — adversário ERRADO)"
+            apostou_time = time_errado
+            x_em = f"{time_errado} (3º colocado do grupo {grp_errado})"
         else:
+            apostou_time = "—"
             x_em = "— (sem X / fase não preenchida)"
 
         mudancas.append({
@@ -223,6 +227,9 @@ def analisar_participante(caminho, t495_correta):
             "lider_team": lider_team,
             "time_errado": time_errado, "grp_errado": grp_errado,
             "time_certo": time_certo,  "grp_certo": grp_certo,
+            "confronto_errado": f"{lider_team} x {time_errado}",
+            "confronto_certo": f"{lider_team} x {time_certo}",
+            "apostou_time": apostou_time,
             "x_em": x_em,
             "x_no_3o_errado": time_3o_x,
         })
@@ -240,13 +247,59 @@ def thirds_leader(wb, grupo):
     return "?"
 
 
+def montar_mensagem_participante(resultado):
+    """Monta a mensagem pronta para enviar ao participante afetado."""
+    nome = resultado["nome"]
+    linhas = [
+        f"Oi, {nome}. Tudo bem?",
+        "",
+        "Nós identificamos um erro na montagem de alguns confrontos da primeira fase do mata-mata na planilha do bolão. Esse erro impactou apenas algumas planilhas.",
+        "",
+        "No seu caso, os seguintes confrontos foram ajustados:",
+        "",
+    ]
+
+    for mc in resultado["mudancas"]:
+        linhas.append(
+            f"- {mc['confronto_errado']} -> você colocou {mc['apostou_time']} avançando, "
+            f"mas o confronto correto era {mc['confronto_certo']}."
+        )
+
+    linhas.extend([
+        "",
+        "Olhando os confrontos corrigidos, você gostaria de fazer alguma alteração nos seus palpites de quem avança?",
+        "",
+        "Caso queira manter as escolhas nesses confrontos, não é necessário fazer nada.",
+        "",
+        "Caso queira ajustar algum palpite, estou te enviando a planilha com os confrontos mapeados corretamente e mantendo as suas marcações originais.",
+        "Você poderá alterar apenas os jogos impactados por essa correção, bem como eventuais confrontos posteriores que tenham sido afetados em decorrência dessas mudanças.",
+        "",
+        "Peço desculpas pela confusão e fico à disposição caso tenha qualquer dúvida.",
+        "",
+        "Abs,",
+    ])
+    return "\n".join(linhas)
+
+
+def exportar_mensagens_txt(afetados, caminho_saida):
+    """Exporta um TXT único, com uma mensagem por participante afetado."""
+    with open(caminho_saida, "w", encoding="utf-8") as f:
+        for i, r in enumerate(afetados, start=1):
+            if i > 1:
+                f.write("\n" + "=" * 80 + "\n\n")
+            f.write(montar_mensagem_participante(r))
+            f.write("\n")
+
+
+
 # ── MAIN ────────────────────────────────────────────────────────────────
 def main():
     pasta = sys.argv[1] if len(sys.argv) > 1 else PASTA_PADRAO
     correta_path = sys.argv[2] if len(sys.argv) > 2 else PLANILHA_CORRETA
+    mensagens_path = sys.argv[3] if len(sys.argv) > 3 else ARQUIVO_MENSAGENS
 
     print("=" * 76)
-    print("VALIDADOR T495 v2 — jogos da R32 que mudariam, por seleção e com o X")
+    print("VALIDADOR T495 v3 — jogos da R32 corrigidos + mensagens TXT")
     print("=" * 76)
     print(f"Pasta: {pasta}  |  Tabela correta: {correta_path} → '{ABA_CORRETA}'\n")
 
@@ -293,6 +346,10 @@ def main():
             print("╚" + "═" * 60 + "\n")
     else:
         print("\n✅ Ninguém afetado.\n")
+
+    if afetados:
+        exportar_mensagens_txt(afetados, mensagens_path)
+        print(f"\n📝 Mensagens exportadas em: {mensagens_path}\n")
 
     if problemas:
         print("\n⚠️  A VERIFICAR:\n")
