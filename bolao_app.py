@@ -1666,7 +1666,7 @@ def ranking_bettor_key(bettor):
 def load_t495(path):
     try:
         wb = load_workbook(path, data_only=True)        # sem read_only (mais tolerante)
-        _nome = next((s for s in wb.sheetnames if s.strip().upper() == "T495"), None)
+        _nome = next((s for s in wb.sheetnames if s.strip().upper() == "T495_2"), None)
         if not _nome:
             return {}
         ws = wb[_nome]
