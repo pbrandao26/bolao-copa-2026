@@ -1375,6 +1375,14 @@ FIFA_RANKINGS = {
     'Portugal': 5, 'RD Congo': 46, 'Uzbequistao': 50, 'Colombia': 13,
     'Inglaterra': 4, 'Croacia': 11, 'Gana': 73, 'Panama': 34,
 }
+
+# ── Fair play (critério disciplinar FIFA) — penalidade por seleção.
+# MAIOR = PIOR (mais cartões). Default 0 para todos; preencha marretado
+# só quando precisar desempatar de verdade. Ex.: {'Brasil': 2, 'Suica': 5}
+CARTOES: dict = {}
+def _fair(team):
+    return CARTOES.get(team, 0)
+
 GROUPS_DATA=OrderedDict([
     ('A',['Mexico','Africa do Sul','Coreia do Sul','Tchequia']),
     ('B',['Canada','Bosnia e Herzegovina','Qatar','Suica']),
@@ -1502,7 +1510,12 @@ def sg(b1,b2,r1,r2):
     if br==rr: return 3 if (b1-b2)==(r1-r2) else 2
     return 0
 
+_SORT_DATA: dict = {}   # placares por jogo da última calc_st (p/ confronto direto)
+
+
 def calc_st(data):
+    global _SORT_DATA
+    _SORT_DATA = {m: v for m, v in (data or {}).items() if v is not None}
     st={g:{t:{'pts':0,'played':0,'w':0,'d':0,'l':0,'gf':0,'ga':0} for t in ts}
         for g,ts in GROUPS_DATA.items()}
     for m,(_,g,t1,t2) in enumerate(GROUP_FIXTURES):
@@ -1520,9 +1533,97 @@ def calc_st(data):
             st[g][t2]['pts']+=1;st[g][t2]['d']+=1
     return st
 
+def _h2h_table(teams, group):
+    """Mini-tabela de confronto direto: só os jogos da fase de grupos
+    ENTRE os times do conjunto `teams` (todos do mesmo grupo).
+    Retorna {team: {'pts','gd','gf'}} considerando apenas esses jogos.
+    Usa o gabarito de placares via closure (_SORT_DATA)."""
+    ts = set(teams)
+    acc = {t: {'pts': 0, 'gd': 0, 'gf': 0} for t in ts}
+    for m, (_, g, t1, t2) in enumerate(GROUP_FIXTURES):
+        if g != group or t1 not in ts or t2 not in ts:
+            continue
+        sc = _SORT_DATA.get(m)
+        if not sc or sc[0] is None or sc[1] is None:
+            continue
+        try:
+            s1, s2 = int(sc[0]), int(sc[1])
+        except Exception:
+            continue
+        acc[t1]['gf'] += s1; acc[t1]['gd'] += s1 - s2
+        acc[t2]['gf'] += s2; acc[t2]['gd'] += s2 - s1
+        if s1 > s2:   acc[t1]['pts'] += 3
+        elif s2 > s1: acc[t2]['pts'] += 3
+        else:         acc[t1]['pts'] += 1; acc[t2]['pts'] += 1
+    return acc
+
+
+def _rank_group(items, group):
+    """Ordena um grupo seguindo a regra FIFA:
+       1) pontos (geral)
+       2) entre empatados em pontos → confronto direto (mini-grupo:
+          pts → saldo → gols), reaplicado recursivamente se um empate
+          de 3+ se quebrar num sub-empate
+       3) se persistir → saldo geral → gols geral → fair play → ranking FIFA
+    `items` = lista de (team, stat_dict) do grupo.
+    """
+    # 1) agrupa por pontos gerais (decrescente)
+    by_pts: dict = {}
+    for t, d in items:
+        by_pts.setdefault(d['pts'], []).append((t, d))
+
+    out = []
+    for pts in sorted(by_pts, reverse=True):
+        bloco = by_pts[pts]
+        if len(bloco) == 1:
+            out.extend(bloco)
+        else:
+            out.extend(_break_tie(bloco, group))
+    return out
+
+
+def _break_tie(bloco, group):
+    """Desempata um bloco de times com os MESMOS pontos gerais."""
+    if len(bloco) == 1:
+        return bloco
+
+    # 2) confronto direto entre os empatados
+    h2h = _h2h_table([t for t, _ in bloco], group)
+
+    # subagrupa pela tupla de confronto direto (pts → saldo → gols)
+    sub: dict = {}
+    for t, d in bloco:
+        h = h2h[t]
+        sub.setdefault((h['pts'], h['gd'], h['gf']), []).append((t, d))
+
+    # se o confronto direto não separou ninguém (todos na mesma chave),
+    # vai direto para os critérios gerais — evita recursão infinita
+    if len(sub) == 1:
+        return sorted(
+            bloco,
+            key=lambda x: (
+                -(x[1]['gf'] - x[1]['ga']),   # saldo geral
+                -x[1]['gf'],                  # gols geral
+                _fair(x[0]),                  # fair play (menor = melhor)
+                FIFA_RANKINGS.get(x[0], 150), # ranking FIFA
+            ),
+        )
+
+    # senão, ordena os sub-blocos pelo confronto direto e, dentro de cada
+    # sub-bloco que ainda tem >1 time, reaplica a regra (h2h recursivo
+    # entre só esses times, depois geral)
+    out = []
+    for chave in sorted(sub, reverse=True):       # (pts,gd,gf) desc
+        grupo_sub = sub[chave]
+        if len(grupo_sub) == 1:
+            out.extend(grupo_sub)
+        else:
+            out.extend(_break_tie(grupo_sub, group))
+    return out
+
+
 def sort_st(st):
-    return {g:sorted(d.items(),key=lambda x:(-x[1]['pts'],-(x[1]['gf']-x[1]['ga']),-x[1]['gf'],FIFA_RANKINGS.get(x[0],150)))
-            for g,d in st.items()}
+    return {g: _rank_group(list(d.items()), g) for g, d in st.items()}
 
 def build_r32(ss,t495):
     g1={g:l[0][0] for g,l in ss.items() if l}
