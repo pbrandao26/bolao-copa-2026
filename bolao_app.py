@@ -109,6 +109,14 @@ html, body, [class*="css"] {
 .rc-model { border-left: 4px solid #B2584E !important;
             background: rgba(178,88,78,.07);
             border-color: rgba(178,88,78,.25); }
+.rc-ketchup {
+    border-left: 4px solid #C8102E !important;
+    background: linear-gradient(135deg, rgba(200,16,46,.22), rgba(200,16,46,.08)) !important;
+    border-color: rgba(200,16,46,.5) !important;
+    box-shadow: 0 0 14px rgba(200,16,46,.35) inset;
+}
+.rc-ketchup .rc-name, .rc-ketchup .rc-pts { color: #FFE5E5 !important; }
+.ketchup-strip { font-size:.95rem; letter-spacing:2px; margin:2px 0 }
 .rc-name { font-size: .94rem; font-weight: 700; flex: 1; }
 .rc-sub  { font-size: .67rem; opacity: .6; margin-top: 2px; }
 .rc-pts  { font-size: 1.55rem; font-weight: 900; color: #D6B864 !important; }
@@ -1130,6 +1138,8 @@ def _disk_cache_get(fingerprint):
 #_PWD = os.getenv("APP_PASSWORD")
 if "auth" not in st.session_state:
     st.session_state.auth = False
+if "ketchup" not in st.session_state:
+    st.session_state.ketchup = False
  
 if not st.session_state.auth:
     fp_b64 = img_to_b64(FRONT_PAGE) if FRONT_PAGE else ""
@@ -1300,8 +1310,13 @@ if not st.session_state.auth:
             )
             submitted = st.form_submit_button("Entrar →", width='stretch')
             if submitted:
-                if pwd == _PWD:
+                if pwd == "SenhaDoMauMau":
                     st.session_state.auth = True
+                    st.session_state.ketchup = True
+                    st.rerun()
+                elif pwd == _PWD:
+                    st.session_state.auth = True
+                    st.session_state.ketchup = False
                     st.rerun()
                 else:
                     st.error("Senha incorreta. Tente novamente.")
@@ -1459,6 +1474,21 @@ NKO=len(KO)
 KO_PTS={'R32':3,'Oitavas':5,'Quartas':8,'Semi':12,'3o Lugar':10,'Final':25}
 MEDALS={1:'🥇',2:'🥈',3:'🥉'}
 RND_ICO={'R32':'🔵','Oitavas':'🟢','Quartas':'🟡','Semi':'🔴','3o Lugar':'🟠','Final':'⭐'}
+
+# ── Easter egg "Brother do Ketchup" (só no modo secreto) ──────────────
+KETCHUP_ALVO  = "João Neto"          # nome original do alvo (como vem do arquivo)
+KETCHUP_NOME  = "Brother do Ketchup" # nome exibido no modo secreto
+KETCHUP_DECO  = "🍅🥫🍅🥫🍟🍅🥫"     # tira de emojis pra enfeitar
+
+def _ketchup_on():
+    return bool(st.session_state.get("ketchup", False))
+
+def _is_ketchup_alvo(nm):
+    return _norm_name(nm) == _norm_name(KETCHUP_ALVO)
+
+def _disp_nome(nm):
+    """Nome a exibir: troca o alvo por 'Brother do Ketchup' no modo secreto."""
+    return KETCHUP_NOME if (_ketchup_on() and _is_ketchup_alvo(nm)) else nm
 
 # ── Participantes-modelo (previsões de IA/instituições) ───────────────
 # Aparecem para consulta mas NÃO contam no ranking, na contagem de
@@ -2488,12 +2518,16 @@ with T1:
         for (nm,_,_,_,sc,_) in _display:
             _mod = is_model(nm)
             real_pos = pos_map.get(nm, 0)
+            _kc = _ketchup_on() and _is_ketchup_alvo(nm)
+            _nm_disp = _disp_nome(nm)
             if _mod:
                 cls   = 'rc-model'
                 medal = f'≈{real_pos}°'
             else:
                 cls   = {1:'rc1',2:'rc2',3:'rc3'}.get(real_pos,'rcN')
                 medal = MEDALS.get(real_pos, f"{real_pos}°")
+            if _kc:
+                cls = 'rc-ketchup'      # ← sobrepõe o estilo no modo secreto
             pct   = int(sc['total']/maxp*100) if maxp else 0
             prize_badge = ""
             if (not _mod) and real_pos in prize_pct:
@@ -2510,18 +2544,25 @@ with T1:
                     'color:#B2584E;margin-left:6px;text-transform:uppercase;'
                     'letter-spacing:.5px">🤖 Modelo</span>')
             _medal_color = "#B2584E" if _mod else "inherit"
-            st.markdown(f"""<div class="rc {cls}">
-              <div style="font-size:1.2rem;width:36px;text-align:center;flex-shrink:0;color:{_medal_color};font-weight:800">{medal}</div>
-              <div style="flex:1;min-width:0">
-                <div class="rc-name">{nm}{_model_badge}{prize_badge}</div>
-                <div class="rc-sub">Grupos {sc['grupos']} · Bônus {sc['bonus']} · MM {sc['mm']} · Cravadas {_acertos_5pts_grupos(sc)}</div>
-                <div class="bar-bg"><div class="bar-fg" style="width:{pct}%"></div></div>
-              </div>
-              <div style="text-align:right;flex-shrink:0">
-                <div class="rc-pts">{sc['total']}</div>
-                <div class="rc-pl">pts</div>
-              </div>
-            </div>""", unsafe_allow_html=True)
+            ketchup_html = f'<div class="ketchup-strip">{KETCHUP_DECO}</div>' if _kc else ''
+
+            card_html = (
+                f'<div class="rc {cls}">'
+                f'<div style="font-size:1.2rem;width:36px;text-align:center;flex-shrink:0;color:{_medal_color};font-weight:800">{medal}</div>'
+                f'<div style="flex:1;min-width:0">'
+                f'<div class="rc-name">{_nm_disp}{_model_badge}{prize_badge}</div>'
+                f'<div class="rc-sub">Grupos {sc["grupos"]} · Bônus {sc["bonus"]} · MM {sc["mm"]} · Cravadas {_acertos_5pts_grupos(sc)}</div>'
+                f'{ketchup_html}'
+                f'<div class="bar-bg"><div class="bar-fg" style="width:{pct}%"></div></div>'
+                f'</div>'
+                f'<div style="text-align:right;flex-shrink:0">'
+                f'<div class="rc-pts">{sc["total"]}</div>'
+                f'<div class="rc-pl">pts</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+            st.markdown(card_html, unsafe_allow_html=True)
 
         if _use_expand:
             if not _show_all and len(real_bettors) > 10:
@@ -3570,11 +3611,15 @@ with T4:
     bnm,bgb,bbb,bxm,bsc,bprnd = next(b for b in bettors if b[0]==sel)
     pos   = next(i for i,(nm,*_) in enumerate(bettors,1) if nm==bnm)
     medal = MEDALS.get(pos, f"{pos}°")
-
+    _kc = _ketchup_on() and _is_ketchup_alvo(bnm)
+    _bnm_disp = _disp_nome(bnm)
+    _hero_bg = ("background:linear-gradient(135deg,#7a0a1a,#C8102E 60%,#a01020)!important;"
+                if _kc else "")
     st.markdown(f"""
-    <div class="hero" style="padding:18px 26px;margin-bottom:12px">
+    <div class="hero" style="padding:18px 26px;margin-bottom:12px;{_hero_bg}">
       <span style="font-size:1.5rem;color:#FFFFFF;font-weight:800">{medal}</span>
-      <span class="hero-title" style="font-size:1.45rem;margin-left:10px">{bnm}</span>
+      <span class="hero-title" style="font-size:1.45rem;margin-left:10px">{_bnm_disp}</span>
+      {'<span style="font-size:1.3rem;margin-left:10px">' + KETCHUP_DECO + '</span>' if _kc else ''}
       <div class="hero-sub" style="margin-top:6px">
         Total: <b>{bsc['total']} pts</b> &nbsp;·&nbsp;
         Grupos: <b>{bsc['grupos']}</b> &nbsp;·&nbsp;
@@ -3591,6 +3636,13 @@ with T4:
     with _sub_resumo:
         # Bônus
         st.markdown('<div class="sh">🎁 Bônus Pré-Copa</div>', unsafe_allow_html=True)
+        if _kc:
+            st.markdown(
+                f'<div style="text-align:center;font-size:2rem;letter-spacing:6px;'
+                f'padding:6px;border-radius:10px;background:rgba(200,16,46,.12);'
+                f'margin-bottom:8px">{KETCHUP_DECO}{KETCHUP_DECO}</div>',
+                unsafe_allow_html=True)
+
         ab,mb = bbb; ar,mr_ = (br or (None,None))
         for col,(lbl,bv,rv,pts) in zip(st.columns(2),[
             ("⚽ Artilheiro", ab, ar, bsc['art_pts']),
