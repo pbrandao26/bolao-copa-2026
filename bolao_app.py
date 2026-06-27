@@ -232,6 +232,13 @@ def img_to_b64(path):
     except:
         return ""
 
+def audio_to_b64(path):
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return ""
+
 # Paths dos assets (ao lado do script ou em subpasta assets/)
 SCRIPT_DIR = Path(__file__).parent
 
@@ -279,7 +286,7 @@ LOGO_TORI         = find_asset("logo_tori.png")
 MASCOTES          = find_asset("mascotes.png")
 FRONT_PAGE        = find_asset("front_page.png")
 FAVICON           = find_asset("favicon.png")
-
+KETCHUP_MP3       = find_asset("ketchup.mpeg")
 # ── Feature flags
 MOSTRAR_SIMULACAO = True   # True → mostra aba 🔮 Simulação; False → sistema idêntico ao atual
 
@@ -2361,6 +2368,17 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════
 # HERO HEADER
 # ══════════════════════════════════════════════════════════════════════
+# ── Música do Brother do Ketchup (só no modo secreto) ──
+if _ketchup_on() and not st.session_state.get("_ketchup_tocou", False):
+    _mus_b64 = audio_to_b64(KETCHUP_MP3)
+    if _mus_b64:
+        st.markdown(
+            f'<audio autoplay loop style="display:none">'
+            f'<source src="data:audio/mpeg;base64,{_mus_b64}" type="audio/mpeg">'
+            f'</audio>',
+            unsafe_allow_html=True,
+        )
+    st.session_state["_ketchup_tocou"] = True
 _fav_b64 = img_to_b64(FAVICON) if FAVICON else ""
 _hero_icon = (
     f'<img src="data:image/png;base64,{_fav_b64}" style="width:6rem;height:6rem;object-fit:contain">'
