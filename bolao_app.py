@@ -2448,11 +2448,24 @@ if gr:
 rnd_ms = OrderedDict()
 for m,(rnd,*_) in enumerate(KO): rnd_ms.setdefault(rnd,[]).append(m)
 
+# Times cujo jogo REAL da rodada já tem placar (separa "errou" de "aguardando")
+real_decided_by_rnd: dict = {}
+round_complete_by_rnd: dict = {}
+for _rnd, _midxs in rnd_ms.items():
+    _dec = set()
+    for _m in _midxs:
+        if _m in mmr:
+            for _t in rn.get(_m, ()):
+                if _t and _t != '?':
+                    _dec.add(_t)
+    real_decided_by_rnd[_rnd] = _dec
+    round_complete_by_rnd[_rnd] = all(_m in mmr for _m in _midxs)
+
 # ── Métricas
 c5 = st.columns(5)
 for col,(val,lbl) in zip(c5,[
     (f"{len(gr)}/72","Jogos Grupos"), (f"{len(mmr)}/32","Jogos MM"),
-    (str(sum(a+b for a,b in gr.values())),"Gols"),
+    (str(sum(a+b for a,b in gr.values()) + sum(v[0]+v[1] for v in mmr.values())),"Gols"),
     (str(real_bettors[0][4]['total']) if real_bettors else "0","Líder (pts)"),
     (str(len(real_bettors)),"Participantes"),
 ]):
@@ -3466,6 +3479,8 @@ with T3:
         for rnd, mlist in rnd_ms.items():
             pv       = KO_PTS[rnd]
             real_set = real_by_rnd.get(rnd, set())
+            decided_set = real_decided_by_rnd.get(rnd, set())
+            round_done  = round_complete_by_rnd.get(rnd, False)
             started  = bool(real_set)
             ico      = RND_ICO.get(rnd, "⚪")
 
@@ -3512,11 +3527,11 @@ with T3:
                     _tds = ""
                     for _, prnd, _ in btr:
                         picked = team in prnd.get(rnd, set())
-                        if picked and in_real and started: ic = "✅" # apostou E avançou
-                        elif picked and not started:        ic = "⏳" # apostou, mas rodada ainda não começou
-                        elif picked:                        ic = "❌" # apostou mas NÃO avançou
-                        elif in_real and started:           ic = "🔵" # avançou mas o apostador NÃO apostou
-                        else:                               ic = '<span style="opacity:.25">·</span>' # nem apostou nem avançou
+                        if picked and in_real:                               ic = "✅" # apostou E avançou
+                        elif picked and (team in decided_set or round_done): ic = "❌" # jogo saiu e o time caiu
+                        elif picked:                                         ic = "⏳" # jogo ainda não rolou
+                        elif in_real:                                        ic = "🔵" # avançou mas não apostou
+                        else:                                                ic = '<span style="opacity:.25">·</span>'
                         _tds += f'<td style="text-align:center;font-size:.85rem">{ic}</td>'
                     _row_bg = "rgba(13,133,135,.06)" if in_real else ""
                     _body  += f'<tr style="background:{_row_bg}">{_td_team}{_tds}</tr>'
@@ -3573,6 +3588,8 @@ with T3:
                 unsafe_allow_html=True,
             )
             _real_ph = real_by_rnd.get(_ph, set())
+            _decided_ph = real_decided_by_rnd.get(_ph, set())
+            _done_ph = round_complete_by_rnd.get(_ph, False)
             _part_picks_ph = _part_prnd.get(_ph, [])
             if not _part_picks_ph:
                 st.markdown('<div style="opacity:.3;font-size:.75rem;text-align:center">—</div>', unsafe_allow_html=True)
@@ -3580,16 +3597,15 @@ with T3:
             for _m_idx, _team in _part_picks_ph:
                 _t1, _t2 = _bn_mm.get(_m_idx, ('?','?'))
                 _in_real = _team in _real_ph
-                _started = bool(_real_ph)
-                if not _started:
-                    _bg, _fc = "rgba(128,128,128,.1)", "inherit"
-                    _status = "⏳"
-                elif _in_real:
+                if _in_real:
                     _bg, _fc = "rgba(13,133,135,.18)", "#0D8587"
                     _status = "✅"
-                else:
+                elif _team in _decided_ph or _done_ph:
                     _bg, _fc = "rgba(178,88,78,.15)", "#B2584E"
                     _status = "❌"
+                else:
+                    _bg, _fc = "rgba(128,128,128,.1)", "inherit"
+                    _status = "⏳"
                 # show both matchup teams + highlight predicted winner
                 _opp = _t2 if _team == _t1 else _t1
                 st.markdown(
@@ -3722,18 +3738,24 @@ with T4:
         # Reuse real_by_rnd from T3 scope (same module)
 
         for rnd, mlist in rnd_ms.items():
-            pv         = KO_PTS[rnd]
-            real_set   = real_by_rnd.get(rnd, set())
-            my_picks   = b_prnd.get(rnd, set())
-            started    = bool(real_set)
-            pts_earned = sum(bsc["mdet"].get(m,0) or 0 for m in mlist)
-            correct    = len(my_picks & real_set) if started else 0
-            missed     = my_picks - real_set         # picked but didn't advance
-            not_picked = real_set - my_picks         # advanced but not picked
-            ico        = RND_ICO.get(rnd,"⚪")
+            pv          = KO_PTS[rnd]
+            real_set    = real_by_rnd.get(rnd, set())
+            decided_set = real_decided_by_rnd.get(rnd, set())
+            round_done  = round_complete_by_rnd.get(rnd, False)
+            my_picks    = b_prnd.get(rnd, set())
+            started     = bool(real_set)
+            pts_earned  = sum(bsc["mdet"].get(m,0) or 0 for m in mlist)
+            correct     = len(my_picks & real_set) if started else 0
+            missed      = {t for t in my_picks
+                           if t not in real_set and (t in decided_set or round_done)}
+            pending     = {t for t in my_picks
+                           if t not in real_set and t not in decided_set and not round_done}
+            not_picked  = real_set - my_picks
+            ico         = RND_ICO.get(rnd,"⚪")
 
             pts_label = (f"+{pts_earned} pts" if pts_earned > 0 else
-                        ("⏳ aguardando" if not started else "0 pts"))
+                        ("⏳ aguardando" if not started else
+                         ("0 pts" if round_done else "⏳ em andamento")))
 
             with st.expander(
                 f"{ico} {rnd}  ({pv} pts/seleção) — {pts_label}",
@@ -3754,12 +3776,12 @@ with T4:
                         html_p = ""
                         for team in sorted(my_picks, key=str):
                             in_real = team in real_set
-                            if not started:
-                                cls, ico_t = "pill-wait", "⏳"
-                            elif in_real:
+                            if in_real:
                                 cls, ico_t = "pill-hit",  "✅"
-                            else:
+                            elif team in decided_set or round_done:
                                 cls, ico_t = "pill-miss", "❌"
+                            else:
+                                cls, ico_t = "pill-wait", "⏳"
                             html_p += f'<span class="pill {cls}">{ico_t} {FI(team)}{team}</span>'
                         st.markdown(f'<div style="line-height:2">{html_p}</div>', unsafe_allow_html=True)
                     else:
@@ -3785,14 +3807,15 @@ with T4:
 
                 # Score strip
                 if started:
-                    miss_str = (", ".join(f"{F(t)}{t}" for t in sorted(missed, key=str))
-                                if missed else "—")
                     unexp_str = (", ".join(f"{F(t)}{t}" for t in sorted(not_picked, key=str))
                                 if not_picked else "—")
+                    _pend_html = (f'<span style="opacity:.7">⏳ <b>{len(pending)}</b> aguardando</span>'
+                                  if pending else "")
                     st.markdown(
                         f'<div class="score-strip">'
                         f'<span>✅ <b style="color:#22C55E">{correct}</b> acertos</span>'
                         f'<span>❌ <b style="color:#EF4444">{len(missed)}</b> erros</span>'
+                        f'{_pend_html}'
                         f'<span style="opacity:.6">Não apostou em: {unexp_str}</span>'
                         f'<span style="margin-left:auto;font-weight:800;color:#D6B864">{pts_earned} pts</span>'
                         f'</div>',
