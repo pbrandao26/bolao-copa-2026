@@ -1549,6 +1549,24 @@ def sg(b1,b2,r1,r2):
 
 _SORT_DATA: dict = {}   # placares por jogo da última calc_st (p/ confronto direto)
 
+# ── Regra de desempate especial por apostador ────────────────────────
+# Para este apostador, a tabela de grupos (e portanto o chaveamento)
+# usa: pontos → saldo de gols → gols pró (sem confronto direto / fair / FIFA).
+DESEMPATE_SIMPLES_ALVO = "Luis Felipe Gadelha"   # nome como aparece no app
+_DESEMPATE_SIMPLES = False                        # flag global (ligada por apostador)
+
+from contextlib import contextmanager
+
+@contextmanager
+def _regra_desempate_para(nome):
+    """Liga a regra simples (saldo→gols pró) só se `nome` for o alvo."""
+    global _DESEMPATE_SIMPLES
+    _prev = _DESEMPATE_SIMPLES
+    _DESEMPATE_SIMPLES = _norm_name(nome) == _norm_name(DESEMPATE_SIMPLES_ALVO)
+    try:
+        yield
+    finally:
+        _DESEMPATE_SIMPLES = _prev
 
 def calc_st(data):
     global _SORT_DATA
@@ -1603,7 +1621,21 @@ def _rank_group(items, group):
           de 3+ se quebrar num sub-empate
        3) se persistir → saldo geral → gols geral → fair play → ranking FIFA
     `items` = lista de (team, stat_dict) do grupo.
+
+    Modo especial (_DESEMPATE_SIMPLES): pontos → saldo de gols → gols pró,
+    sem confronto direto / fair play / ranking. Usado p/ um apostador.
     """
+    if _DESEMPATE_SIMPLES:
+        return sorted(
+            items,
+            key=lambda x: (
+                -x[1]['pts'],                 # pontos
+                -(x[1]['gf'] - x[1]['ga']),   # saldo de gols
+                -x[1]['gf'],                  # gols pró
+                _nome_alfabetico(x[0]),       # desempate final estável
+            ),
+        )
+
     # 1) agrupa por pontos gerais (decrescente)
     by_pts: dict = {}
     for t, d in items:
@@ -1617,7 +1649,6 @@ def _rank_group(items, group):
         else:
             out.extend(_break_tie(bloco, group))
     return out
-
 
 def _break_tie(bloco, group):
     """Desempata um bloco de times com os MESMOS pontos gerais."""
@@ -2002,6 +2033,7 @@ def load_all_data_consolidated(gab_path, consol_path):
         sc   = score_all(gb, xm, bb, gr, mmr, br, t495, t495_new)
         prnd = picks_by_round(gb, xm, t495)
         bettors.append((nm, gb, bb, xm, sc, prnd))
+
     bettors.sort(key=ranking_bettor_key)
     return t495, t495_new, gr, mmr, br, bettors
 
@@ -3324,7 +3356,8 @@ with T2:
         else:
             sel_b = st.selectbox("Apostador", [b[0] for b in bettors], key='grp_pick')
             bd    = next(b for b in bettors if b[0]==sel_b)
-            data_src = sort_st(calc_st(bd[1]))
+            with _regra_desempate_para(sel_b):
+                data_src = sort_st(calc_st(bd[1]))
 
         for row_g in [GL[i:i+3] for i in range(0,12,3)]:
             cs = st.columns(3, gap="small")
@@ -3565,7 +3598,8 @@ with T3:
     sel_b_mm = st.selectbox("Apostador", [b[0] for b in bettors], key="mm_part_sel")
     _bd_mm = next(b for b in bettors if b[0] == sel_b_mm)
     _, _bgb_mm, _, _bxm_mm, _bsc_mm,_ = _bd_mm
-    _picks_mm, _bn_mm = sim_bet(_bgb_mm, _bxm_mm, t495)
+    with _regra_desempate_para(sel_b_mm):
+        _picks_mm, _bn_mm = sim_bet(_bgb_mm, _bxm_mm, t495)
 
     # Group picks by round
     _part_prnd: dict = {}
@@ -3728,7 +3762,8 @@ with T4:
         # ── Mata-Mata: seleções por fase ──────────────────────────────────────
         st.markdown('<div class="sh">🏆 Mata-Mata — Seleções por Fase</div>', unsafe_allow_html=True)
 
-        bpicks_b, bnames_b = sim_bet(bgb, bxm, t495)
+        with _regra_desempate_para(bnm):
+            bpicks_b, bnames_b = sim_bet(bgb, bxm, t495)
         b_prnd: dict = {}
         for m, (rnd, *_) in enumerate(KO):
             p = bpicks_b.get(m)
